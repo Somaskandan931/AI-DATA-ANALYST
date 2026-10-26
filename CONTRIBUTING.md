@@ -4,11 +4,11 @@ Two collaborators (Somaskandan and Nishi) build one platform from two independen
 
 ## Proposed ownership (adjust together before P1)
 
-| Area | Paths | Owner (proposed) |
-| --- | --- | --- |
-| M1 Auto-EDA | `ingestion/`, `profiling/`, `analysis/`, `visualization/`, `reporting/`, `chat/` | Somaskandan |
-| M2 Text-to-SQL | `sql_agent/`, SQL benchmark in `data/expected/` | Nishi |
-| Shared contracts | `models.py`, `security/`, `evaluation/` | Both (every change reviewed by the other) |
+| Area | Paths | Owner (proposed)                                           |
+| --- | --- |------------------------------------------------------------|
+| M1 Auto-EDA | `ingestion/`, `profiling/`, `analysis/`, `visualization/`, `reporting/`, `chat/` | Somaskandan                                                |
+| M2 Text-to-SQL | `sql_agent/`, SQL benchmark in `data/expected/` | Nishi                                                      |
+| Shared contracts | `models.py`, `security/`, `evaluation/` | Prathin                                                        |
 | UI integration | `ui/`, `app.py` | Whoever finishes their module first; reviewed by the other |
 
 `M1` and `M2` must not import each other. They share only `models.py`, `security/` and `evaluation/`.
