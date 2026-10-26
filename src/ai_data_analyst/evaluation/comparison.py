@@ -8,39 +8,37 @@ raising on the first difference.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+
+from pydantic import BaseModel, ConfigDict, Field
 
 from ..models import ColumnProfile, DatasetProfile
 
 ProfileValue = str | int | float | None
 
 
-@dataclass(frozen=True, slots=True)
-class Tolerances:
+class Tolerances(BaseModel):
     """Absolute and relative tolerance used for float comparisons."""
 
-    absolute: float = 1e-6
-    relative: float = 0.0
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
-    def __post_init__(self) -> None:
-        tolerances = (("absolute", self.absolute), ("relative", self.relative))
-        for name, value in tolerances:
-            if not math.isfinite(value) or value < 0:
-                raise ValueError(f"{name} tolerance must be a finite non-negative number")
+    absolute: float = Field(default=1e-6, ge=0)
+    relative: float = Field(default=0.0, ge=0)
 
 
-@dataclass(frozen=True, slots=True)
-class ProfileMismatch:
+class ProfileMismatch(BaseModel):
     """One differing field, with the expected and actual values."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
     field_path: str
     expected: ProfileValue
     actual: ProfileValue
 
 
-@dataclass(frozen=True, slots=True)
-class ProfileComparisonResult:
+class ProfileComparisonResult(BaseModel):
     """All mismatches found while comparing two profiles."""
+
+    model_config = ConfigDict(extra="forbid", frozen=True, allow_inf_nan=False)
 
     mismatches: tuple[ProfileMismatch, ...]
 

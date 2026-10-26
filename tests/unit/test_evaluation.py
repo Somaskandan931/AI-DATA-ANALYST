@@ -1,15 +1,29 @@
 import copy
 
 import pytest
+from pydantic import ValidationError
 
 from ai_data_analyst.evaluation import (
     EvaluationResult,
+    ProfileComparisonResult,
+    ProfileMismatch,
     Tolerances,
     compare_profiles,
 )
 from ai_data_analyst.models import ColumnProfile, DatasetProfile
 
 FINGERPRINT = "b" * 64
+
+
+def _evaluation_result(**overrides: object) -> EvaluationResult:
+    fields: dict[str, object] = {
+        "metric_name": "accuracy",
+        "value": 0.5,
+        "sample_count": 1,
+        "benchmark_version": "1.0",
+    }
+    fields.update(overrides)
+    return EvaluationResult(**fields)
 
 
 def _float_column(**overrides: object) -> ColumnProfile:
@@ -206,10 +220,11 @@ def test_missing_actual_column_is_reported():
     assert result.mismatches[1].actual is None
 
 
+@pytest.mark.parametrize("field_name", ["absolute", "relative"])
 @pytest.mark.parametrize("value", [-0.1, float("nan"), float("inf")])
-def test_tolerances_reject_invalid_values(value: float):
-    with pytest.raises(ValueError):
-        Tolerances(absolute=value)
+def test_tolerances_reject_invalid_values(field_name: str, value: float):
+    with pytest.raises(ValidationError):
+        Tolerances(**{field_name: value})
 
 
 def test_evaluation_result_accepts_valid_metric():
@@ -224,7 +239,7 @@ def test_evaluation_result_accepts_valid_metric():
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf")])
 def test_evaluation_result_rejects_non_finite_value(value: float):
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         EvaluationResult(
             metric_name="accuracy",
             value=value,
@@ -234,10 +249,109 @@ def test_evaluation_result_rejects_non_finite_value(value: float):
 
 
 def test_evaluation_result_rejects_negative_sample_count():
-    with pytest.raises(ValueError):
+    with pytest.raises(ValidationError):
         EvaluationResult(
             metric_name="accuracy",
             value=1.0,
             sample_count=-1,
             benchmark_version="1.0",
         )
+
+
+@pytest.mark.parametrize("field_name", ["metric_name", "benchmark_version"])
+def test_evaluation_result_rejects_empty_strings(field_name: str):
+    with pytest.raises(ValidationError):
+        _evaluation_result(**{field_name: ""})
+
+
+def _profile_mismatch(**overrides: object) -> ProfileMismatch:
+    fields: dict[str, object] = {"field_path": "columns[0].mean", "expected": 1.0, "actual": 1.5}
+    fields.update(overrides)
+    return ProfileMismatch(**fields)
+
+
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(lambda **extra: _evaluation_result(**extra), id="EvaluationResult"),
+        pytest.param(lambda **extra: Tolerances(**extra), id="Tolerances"),
+        pytest.param(lambda **extra: _profile_mismatch(**extra), id="ProfileMismatch"),
+        pytest.param(
+            lambda **extra: ProfileComparisonResult(mismatches=(), **extra),
+            id="ProfileComparisonResult",
+        ),
+    ],
+)
+def test_evaluation_models_reject_unknown_fields(build):
+    with pytest.raises(ValidationError):
+        build(surprise=1)
+
+
+@pytest.mark.parametrize("bad_value", [float("nan"), float("inf"), float("-inf")])
+@pytest.mark.parametrize(
+    "build",
+    [
+        pytest.param(lambda bad: _evaluation_result(value=bad), id="EvaluationResult"),
+        pytest.param(lambda bad: Tolerances(absolute=bad), id="Tolerances"),
+        pytest.param(
+            lambda bad: _profile_mismatch(expected=bad),
+            id="ProfileMismatch",
+        ),
+        pytest.param(
+            lambda bad: ProfileComparisonResult(
+                mismatches=({"field_path": "p", "expected": bad, "actual": 1.0},)
+            ),
+            id="ProfileComparisonResult",
+        ),
+    ],
+)
+def test_evaluation_models_reject_non_finite_numbers(build, bad_value: float):
+    with pytest.raises(ValidationError):
+        build(bad_value)
+
+
+@pytest.mark.parametrize(
+    "model",
+    [
+        pytest.param(_evaluation_result(), id="EvaluationResult"),
+        pytest.param(Tolerances(), id="Tolerances"),
+        pytest.param(_profile_mismatch(), id="ProfileMismatch"),
+        pytest.param(
+            ProfileComparisonResult(mismatches=(_profile_mismatch(),)),
+            id="ProfileComparisonResult",
+        ),
+    ],
+)
+def test_evaluation_models_json_round_trip(model):
+    round_tripped = type(model).model_validate_json(model.model_dump_json())
+    assert round_tripped == model
+
+
+@pytest.mark.parametrize(
+    ("model", "field_name", "replacement"),
+    [
+        pytest.param(_evaluation_result(), "value", 1.0, id="EvaluationResult"),
+        pytest.param(Tolerances(), "absolute", 0.0, id="Tolerances"),
+        pytest.param(_profile_mismatch(), "field_path", "other", id="ProfileMismatch"),
+        pytest.param(
+            ProfileComparisonResult(mismatches=()),
+            "mismatches",
+            (),
+            id="ProfileComparisonResult",
+        ),
+    ],
+)
+def test_evaluation_models_are_immutable(model, field_name: str, replacement):
+    with pytest.raises(ValidationError):
+        setattr(model, field_name, replacement)
+
+
+def test_comparison_result_normalizes_mismatches_to_a_tuple():
+    mismatch = {
+        "field_path": "columns[0].mean",
+        "expected": 1.0,
+        "actual": 1.5,
+    }
+    result = ProfileComparisonResult(mismatches=[mismatch])
+    assert isinstance(result.mismatches, tuple)
+    assert isinstance(result.mismatches[0], ProfileMismatch)

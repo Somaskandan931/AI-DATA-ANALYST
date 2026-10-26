@@ -121,5 +121,5 @@ def test_checker_allows_expected_edges():
     )
     assert not _check_rules(
         "ai_data_analyst.evaluation.comparison",
-        [("ai_data_analyst.models", 1), ("ai_data_analyst.security.limits", 2)],
+        [("ai_data_analyst.models", 1), ("ai_data_analyst.security.limits", 2), ("pydantic", 3)],
     )
