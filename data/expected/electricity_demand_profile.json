@@ -1,0 +1,93 @@
+{
+  "schema_version": "1.0",
+  "dataset_fingerprint": "e0b688d65789cee9cd2f0bee7581a9d4339d5b29a1a902501eb5f20b052a5354",
+  "row_count": 485,
+  "column_count": 6,
+  "duplicate_row_count": 5,
+  "columns": [
+    {
+      "name": "record_id",
+      "inferred_type": "string",
+      "missing_count": 0,
+      "unique_count": 480,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "median": null,
+      "std": null,
+      "q1": null,
+      "q3": null,
+      "outlier_count": null
+    },
+    {
+      "name": "date",
+      "inferred_type": "date",
+      "missing_count": 0,
+      "unique_count": 120,
+      "min": "2025-01-01",
+      "max": "2025-04-30",
+      "mean": null,
+      "median": null,
+      "std": null,
+      "q1": null,
+      "q3": null,
+      "outlier_count": null
+    },
+    {
+      "name": "region",
+      "inferred_type": "string",
+      "missing_count": 0,
+      "unique_count": 4,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "median": null,
+      "std": null,
+      "q1": null,
+      "q3": null,
+      "outlier_count": null
+    },
+    {
+      "name": "demand_mwh",
+      "inferred_type": "float",
+      "missing_count": 4,
+      "unique_count": 460,
+      "min": 740.5,
+      "max": 3950.8,
+      "mean": 1121.197713,
+      "median": 1106.7,
+      "std": 279.334266,
+      "q1": 960.7,
+      "q3": 1240.8,
+      "outlier_count": 3
+    },
+    {
+      "name": "temperature_c",
+      "inferred_type": "float",
+      "missing_count": 12,
+      "unique_count": 171,
+      "min": 9.4,
+      "max": 31.3,
+      "mean": 19.528118,
+      "median": 19.4,
+      "std": 4.564889,
+      "q1": 16.1,
+      "q3": 22.9,
+      "outlier_count": 0
+    },
+    {
+      "name": "holiday",
+      "inferred_type": "string",
+      "missing_count": 0,
+      "unique_count": 2,
+      "min": null,
+      "max": null,
+      "mean": null,
+      "median": null,
+      "std": null,
+      "q1": null,
+      "q3": null,
+      "outlier_count": null
+    }
+  ]
+}
