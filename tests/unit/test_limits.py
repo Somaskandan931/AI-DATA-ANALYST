@@ -1,3 +1,5 @@
+from pathlib import Path
+
 import pytest
 from pydantic import ValidationError
 
@@ -9,6 +11,8 @@ from ai_data_analyst.security import (
     check_shape,
     check_upload_size,
 )
+
+ENV_EXAMPLE_PATH = Path(__file__).resolve().parents[2] / ".env.example"
 
 LIMIT_FIELDS = [
     "max_upload_bytes",
@@ -123,3 +127,22 @@ def test_columns_over_limit_are_rejected():
     limits = _limits()
     with pytest.raises(LimitExceededError, match="max_columns=3"):
         check_shape(1, limits.max_columns + 1, limits)
+
+
+def _env_example_keys() -> set[str]:
+    keys: set[str] = set()
+    for line in ENV_EXAMPLE_PATH.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        key, separator, _ = stripped.partition("=")
+        if separator:
+            keys.add(key.strip())
+    return keys
+
+
+def test_env_example_and_from_env_document_the_same_limit_variables():
+    documented = _env_example_keys()
+    read_by_from_env = set(ENV_VARS.values())
+    assert read_by_from_env <= documented
+    assert {key for key in documented if key.startswith("AIDA_")} == read_by_from_env
