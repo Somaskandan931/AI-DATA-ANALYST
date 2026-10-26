@@ -2,15 +2,25 @@
 
 from __future__ import annotations
 
-from pydantic import BaseModel, ConfigDict, Field
+import math
+from dataclasses import dataclass
 
 
-class EvaluationResult(BaseModel):
+@dataclass(frozen=True, slots=True)
+class EvaluationResult:
     """One measured metric: name, value, sample count and benchmark version."""
 
-    model_config = ConfigDict(frozen=True, extra="forbid", allow_inf_nan=False)
-
-    metric_name: str = Field(min_length=1)
+    metric_name: str
     value: float
-    sample_count: int = Field(ge=0)
-    benchmark_version: str = Field(min_length=1)
+    sample_count: int
+    benchmark_version: str
+
+    def __post_init__(self) -> None:
+        if not self.metric_name:
+            raise ValueError("metric_name must not be empty")
+        if not math.isfinite(self.value):
+            raise ValueError("value must be finite")
+        if self.sample_count < 0:
+            raise ValueError("sample_count must be non-negative")
+        if not self.benchmark_version:
+            raise ValueError("benchmark_version must not be empty")

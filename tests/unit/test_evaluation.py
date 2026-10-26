@@ -1,7 +1,6 @@
 import copy
 
 import pytest
-from pydantic import ValidationError
 
 from ai_data_analyst.evaluation import (
     EvaluationResult,
@@ -209,7 +208,7 @@ def test_missing_actual_column_is_reported():
 
 @pytest.mark.parametrize("value", [-0.1, float("nan"), float("inf")])
 def test_tolerances_reject_invalid_values(value: float):
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         Tolerances(absolute=value)
 
 
@@ -225,7 +224,7 @@ def test_evaluation_result_accepts_valid_metric():
 
 @pytest.mark.parametrize("value", [float("nan"), float("inf")])
 def test_evaluation_result_rejects_non_finite_value(value: float):
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         EvaluationResult(
             metric_name="accuracy",
             value=value,
@@ -235,7 +234,7 @@ def test_evaluation_result_rejects_non_finite_value(value: float):
 
 
 def test_evaluation_result_rejects_negative_sample_count():
-    with pytest.raises(ValidationError):
+    with pytest.raises(ValueError):
         EvaluationResult(
             metric_name="accuracy",
             value=1.0,
