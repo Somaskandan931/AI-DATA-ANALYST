@@ -4,7 +4,7 @@ An AI-assisted analytics platform combining deterministic Auto-EDA for CSV files
 
 ## Project status
 
-**Stage:** P0 complete (foundation). **Next:** P1, CSV ingestion and profiling.
+**Stage:** P1 implemented (CSV ingestion and profiling, M1). **Next:** P2, controlled Auto-EDA.
 **Tier:** T2
 **Collaborators:** Somaskandan, Nishi, Prathin
 

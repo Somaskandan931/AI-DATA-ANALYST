@@ -41,3 +41,22 @@ Defined in `src/ai_data_analyst/models.py` as a frozen Pydantic model with `sche
 ## Module independence
 
 `ingestion/profiling/analysis/visualization/reporting/chat` (M1) and `sql_agent` (M2) must not import each other. Both may import `models`, `security` and `evaluation`.
+
+## M1 analysis contracts: `AnalysisPlan` and `AnalysisArtifact`
+
+Currently defined in `analysis/plan.py` and `analysis/artifact.py` (schema version `1.0`) and
+exported from `ai_data_analyst.analysis`. They move to `models.py` once the contracts owner
+agrees, since `chat/`, `reporting/` and `evaluation/` consume them.
+
+- `AnalysisPlan`: 1 to 20 steps. Each step is one of the allow-listed operations, selected by
+  the `operation` field: `summary_stats`, `grouped_aggregation`, `correlation`, `distribution`,
+  `outlier_summary` (clustering and PCA are still to come). Parameters are typed and bounded;
+  unknown fields are rejected, and no field carries an expression or code.
+- `validate_plan(plan, profile)` checks columns exist and their inferred types suit the
+  operation. `execute_plan` validates the whole plan first, so nothing runs on a bad plan, and
+  checks `max_execution_seconds` between steps.
+- `AnalysisArtifact`: `operation`, `input_columns`, `parameters`, `result` (strict JSON, `None`
+  for undefined values), `warnings`, and `provenance` (dataset fingerprint, rows used, library
+  versions).
+- `typed_frame(ingested, profile)` builds the typed analysis view. It does not clean or impute;
+  the cleaning working view (EDA-04) is separate and still to do.
