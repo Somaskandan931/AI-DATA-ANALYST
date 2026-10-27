@@ -148,9 +148,7 @@ _MESSAGES = {
     "complex": "The SQL is too large or too deeply nested.",
     "table": "The query references a table that is not allowed.",
     "qualified": "Schema-qualified table names are not allowed.",
-    "column": (
-        "The query references a column that is unknown, not allowed, or ambiguous."
-    ),
+    "column": ("The query references a column that is unknown, not allowed, or ambiguous."),
     "star": "Unexpanded wildcard (*) is not allowed.",
     "func": "A function or expression that is not on the allow-list was used.",
     "internal": "The query could not be verified and was denied.",
@@ -369,9 +367,7 @@ def _check_nodes(
                 )
 
         elif kind is exp.TableAlias:
-            present_args = {
-                key for key, value in node.args.items() if _present(value)
-            }
+            present_args = {key for key, value in node.args.items() if _present(value)}
             if not present_args <= {"this", "columns"}:
                 result.deny(
                     ViolationCode.UNSUPPORTED_SYNTAX,
@@ -381,8 +377,7 @@ def _check_nodes(
         elif kind is exp.Star:
             parent_type = type(node.parent)
             allowed = parent_type is exp.Count or (
-                allow_projection_star
-                and parent_type in (exp.Select, exp.Column)
+                allow_projection_star and parent_type in (exp.Select, exp.Column)
             )
             if not allowed:
                 result.deny(
@@ -411,9 +406,7 @@ def _check_tables(
         return physical
 
     for scope in scopes:
-        cte_names = {
-            fold_identifier(name) for name in scope.cte_sources
-        }
+        cte_names = {fold_identifier(name) for name in scope.cte_sources}
 
         for table in scope.tables:
             seen_ids.add(id(table))
@@ -428,9 +421,7 @@ def _check_tables(
                 physical.add(real.name)
 
     # Default deny: any table node the scope analysis did not account for.
-    if any(
-        id(table) not in seen_ids for table in root.find_all(exp.Table)
-    ):
+    if any(id(table) not in seen_ids for table in root.find_all(exp.Table)):
         result.deny(
             ViolationCode.INTERNAL_CHECK_FAILED,
             _MESSAGES["internal"],
@@ -445,9 +436,7 @@ def _qualify(
     result: _Analysis,
 ) -> exp.Expr | None:
     schema_dict: dict[str, dict[str, object]] = {
-        table.name: {
-            column.name: "UNKNOWN" for column in table.columns
-        }
+        table.name: {column.name: "UNKNOWN" for column in table.columns}
         for table in snapshot.tables
     }
 

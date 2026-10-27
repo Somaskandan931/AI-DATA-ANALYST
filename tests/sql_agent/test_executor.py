@@ -1,4 +1,3 @@
-
 import sqlite3
 
 import pytest
@@ -23,9 +22,7 @@ def database(tmp_path):
     path = tmp_path / "sample.sqlite"
 
     with sqlite3.connect(path) as connection:
-        connection.execute(
-            "CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)"
-        )
+        connection.execute("CREATE TABLE people (id INTEGER PRIMARY KEY, name TEXT, age INTEGER)")
         connection.executemany(
             "INSERT INTO people (name, age) VALUES (?, ?)",
             [("Asha", 21), ("Ravi", 25), ("Mina", 30)],
