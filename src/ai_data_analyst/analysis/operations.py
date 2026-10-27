@@ -80,11 +80,11 @@ def _summary_stats(frame: pd.DataFrame, params: SummaryStatsParams) -> Operation
             "missing": missing,
             "mean": _num(values.mean()),
             "std": _num(np.std(values, ddof=1)) if values.size > 1 else None,
-            "min": _num(values.min()),
+            "min": _num(np.min(values)),
             "q1": _num(q1),
             "median": _num(median),
             "q3": _num(q3),
-            "max": _num(values.max()),
+            "max": _num(np.max(values)),
         }
         if missing:
             warnings.append(f"{name}: {missing} missing values excluded")

@@ -76,8 +76,13 @@ def _numeric_profile(
         inferred_type=kind,
         missing_count=missing,
         unique_count=int(np.unique(numbers).size),
+<<<<<<< HEAD
         min=_round(float(np.min(numbers))),
         max=_round(float(np.max(numbers))),
+=======
+        min=_round(numbers.min(axis=0)),
+        max=_round(numbers.max(axis=0)),
+>>>>>>> f01b0d904687c9beffe3d2605578ed7fab2adc00
         mean=_round(numbers.mean()),
         median=_round(median),
         std=None if std is None else _round(std),
