@@ -72,3 +72,47 @@ def test_empty_snapshot_allows_nothing():
     snapshot = SchemaSnapshot()
     assert snapshot.tables == ()
     assert not snapshot.has_table("anything")
+
+
+# --- SQLValidationResult / ValidationViolation (Stage 2) ---------------------
+
+from ai_data_analyst.sql_agent.contracts import (  # noqa: E402
+    SQLValidationResult,
+    ValidationViolation,
+    ViolationCode,
+)
+
+
+def _violation(code=ViolationCode.NOT_SELECT):
+    return ValidationViolation(code=code, message="Only a SELECT statement is allowed.")
+
+
+def test_allowed_result_requires_sql_and_no_violations():
+    ok = SQLValidationResult(allowed=True, normalized_sql="SELECT 1", referenced_tables=("t",))
+    assert ok.allowed and ok.reason_codes == ()
+    with pytest.raises(ValidationError):
+        SQLValidationResult(allowed=True)
+    with pytest.raises(ValidationError):
+        SQLValidationResult(allowed=True, normalized_sql="  ")
+    with pytest.raises(ValidationError):
+        SQLValidationResult(allowed=True, normalized_sql="SELECT 1", violations=(_violation(),))
+
+
+def test_denied_result_requires_violation_and_no_sql():
+    denied = SQLValidationResult(allowed=False, violations=(_violation(),))
+    assert denied.reason_codes == (ViolationCode.NOT_SELECT,)
+    with pytest.raises(ValidationError):
+        SQLValidationResult(allowed=False)
+    with pytest.raises(ValidationError):
+        SQLValidationResult(allowed=False, normalized_sql="SELECT 1", violations=(_violation(),))
+    with pytest.raises(ValidationError):
+        SQLValidationResult(allowed=False, referenced_tables=("t",), violations=(_violation(),))
+
+
+def test_violation_message_must_be_non_empty_and_bounded():
+    with pytest.raises(ValidationError):
+        ValidationViolation(code=ViolationCode.PARSE_ERROR, message="")
+    with pytest.raises(ValidationError):
+        ValidationViolation(code=ViolationCode.PARSE_ERROR, message="x" * 201)
+    with pytest.raises(ValidationError):
+        ValidationViolation(code="not_a_code", message="m")

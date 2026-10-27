@@ -11,7 +11,6 @@ only allow-list tables you intend to expose.
 
 import sqlite3
 from pathlib import Path
-from typing import Dict, Optional, Tuple, Union
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -34,13 +33,13 @@ class SchemaAllowList(BaseModel):
 
     model_config = ConfigDict(frozen=True, extra="forbid")
 
-    tables: Dict[str, Optional[Tuple[str, ...]]] = Field(min_length=1)
+    tables: dict[str, tuple[str, ...] | None] = Field(min_length=1)
 
     @field_validator("tables")
     @classmethod
     def _check_tables(
-        cls, tables: Dict[str, Optional[Tuple[str, ...]]]
-    ) -> Dict[str, Optional[Tuple[str, ...]]]:
+        cls, tables: dict[str, tuple[str, ...] | None]
+    ) -> dict[str, tuple[str, ...] | None]:
         seen_tables = set()
         for table, columns in tables.items():
             if not table.strip():
@@ -67,7 +66,7 @@ class SchemaAllowList(BaseModel):
 
 
 def discover_schema(
-    db_path: Union[str, Path], allow_list: SchemaAllowList
+    db_path: str | Path, allow_list: SchemaAllowList
 ) -> SchemaSnapshot:
     """Read allow-listed schema metadata from a SQLite file, read-only."""
     path = Path(db_path)
@@ -92,7 +91,7 @@ def discover_schema(
 def _build_snapshot(
     connection: sqlite3.Connection, allow_list: SchemaAllowList
 ) -> SchemaSnapshot:
-    available: Dict[str, str] = {}
+    available: dict[str, str] = {}
     for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'"):
         if not isinstance(name, str) or fold_identifier(name).startswith(_INTERNAL_PREFIX):
             continue
@@ -114,7 +113,7 @@ def _build_snapshot(
 def _read_table(
     connection: sqlite3.Connection,
     table_name: str,
-    wanted_columns: Optional[Tuple[str, ...]],
+    wanted_columns: tuple[str, ...] | None,
 ) -> TableSchema:
     # The table name is bound as a parameter, never formatted into SQL.
     rows = connection.execute(
