@@ -1,4 +1,3 @@
-
 """Read-only SQLite execution for validated SQL Agent queries."""
 
 from __future__ import annotations
@@ -58,10 +57,7 @@ def execute_sql(
     except Exception:
         raise SQLExecutionError("The SQL query could not be verified.") from None
 
-    if (
-        not checked.allowed
-        or checked.normalized_sql != validation.normalized_sql
-    ):
+    if not checked.allowed or checked.normalized_sql != validation.normalized_sql:
         raise SQLExecutionError("The SQL query could not be verified.")
 
     path = Path(db_path).expanduser().resolve()
@@ -94,9 +90,7 @@ def execute_sql(
             parameters if parameters is not None else (),
         )
 
-        columns = tuple(
-            description[0] for description in (cursor.description or ())
-        )
+        columns = tuple(description[0] for description in (cursor.description or ()))
         if cursor.description is None:
             raise SQLExecutionError("The SQL query did not return a result set.")
 
@@ -116,13 +110,9 @@ def execute_sql(
     except sqlite3.OperationalError:
         if timed_out:
             raise SQLExecutionError("The SQL query exceeded its time limit.") from None
-        raise SQLExecutionError(
-            "The SQL query could not be executed safely."
-        ) from None
+        raise SQLExecutionError("The SQL query could not be executed safely.") from None
     except sqlite3.Error:
-        raise SQLExecutionError(
-            "The SQL query could not be executed safely."
-        ) from None
+        raise SQLExecutionError("The SQL query could not be executed safely.") from None
     finally:
         if connection is not None:
             connection.close()

@@ -32,7 +32,10 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.11",
 ]
-
+gemini = [
+  "google-genai>=1.0",
+  "python-dotenv>=1.0",
+]
 [tool.setuptools.packages.find]
 where = ["src"]
 

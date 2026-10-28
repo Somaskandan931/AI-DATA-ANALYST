@@ -65,9 +65,7 @@ class SchemaAllowList(BaseModel):
         return tables
 
 
-def discover_schema(
-    db_path: str | Path, allow_list: SchemaAllowList
-) -> SchemaSnapshot:
+def discover_schema(db_path: str | Path, allow_list: SchemaAllowList) -> SchemaSnapshot:
     """Read allow-listed schema metadata from a SQLite file, read-only."""
     path = Path(db_path)
     if not path.is_file():
@@ -88,9 +86,7 @@ def discover_schema(
         connection.close()
 
 
-def _build_snapshot(
-    connection: sqlite3.Connection, allow_list: SchemaAllowList
-) -> SchemaSnapshot:
+def _build_snapshot(connection: sqlite3.Connection, allow_list: SchemaAllowList) -> SchemaSnapshot:
     available: dict[str, str] = {}
     for (name,) in connection.execute("SELECT name FROM sqlite_master WHERE type = 'table'"):
         if not isinstance(name, str) or fold_identifier(name).startswith(_INTERNAL_PREFIX):
