@@ -34,7 +34,10 @@ dev = [
   "mypy>=1.11",
   "pandas-stubs>=2.2",
 ]
-
+gemini = [
+  "google-genai>=1.0",
+  "python-dotenv>=1.0",
+]
 [tool.setuptools.packages.find]
 where = ["src"]
 
