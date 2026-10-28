@@ -38,6 +38,10 @@ gemini = [
   "google-genai>=1.0",
   "python-dotenv>=1.0",
 ]
+ollama = [
+  "ollama>=0.3",
+  "python-dotenv>=1.0",  # provider_factory.py loads .env regardless of the chosen provider
+]
 [tool.setuptools.packages.find]
 where = ["src"]
 

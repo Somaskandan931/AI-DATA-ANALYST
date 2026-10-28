@@ -41,7 +41,7 @@ Windows (PowerShell):
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -e ".[app,dev]"
+pip install -e ".[app,dev,gemini,ollama]"
 python -m pytest -q
 streamlit run app.py
 ```
@@ -52,7 +52,7 @@ macOS / Linux:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -e ".[app,dev]"
+pip install -e ".[app,dev,gemini,ollama]"
 python -m pytest -q
 streamlit run app.py
 ```
