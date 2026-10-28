@@ -287,7 +287,7 @@ def _scale_warning(matrix: np.ndarray[Any, np.dtype[np.float64]]) -> list[str]:
     """Warn when unscaled columns differ so much in spread that one will dominate."""
     spreads = matrix.std(axis=0, ddof=1) if matrix.shape[0] > 1 else np.zeros(matrix.shape[1])
     positive = spreads[spreads > 0]
-    if positive.size > 1 and positive.max() / positive.min() > _SCALE_RATIO_WARNING:
+    if positive.size > 1 and float(np.max(positive) / np.min(positive)) > _SCALE_RATIO_WARNING:
         return [
             "columns are on very different scales and were not standardized; "
             "the largest-scale column will dominate the result"
