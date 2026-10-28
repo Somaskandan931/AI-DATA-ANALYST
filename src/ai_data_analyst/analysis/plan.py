@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from typing import Annotated, Final, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from ..models import ColumnProfile, DatasetProfile
 
@@ -26,12 +26,19 @@ OperationName = Literal[
     "correlation",
     "distribution",
     "outlier_summary",
+    "clustering",
+    "pca",
 ]
 Aggregation = Literal["count", "mean", "median", "sum", "min", "max", "std"]
 
 MAX_STEPS: Final = 20
 MAX_COLUMNS_PER_STEP: Final = 50
 MAX_GROUP_COLUMNS: Final = 3
+MAX_CLUSTERS: Final = 10
+MAX_CLUSTER_COLUMNS: Final = 10
+MAX_PCA_COLUMNS: Final = 20
+MAX_PCA_COMPONENTS: Final = 10
+MAX_RANDOM_STATE: Final = 2**31 - 1
 
 _NUMERIC_TYPES: Final = frozenset({"integer", "float"})
 _GROUPABLE_TYPES: Final = frozenset({"integer", "boolean", "date", "string"})
@@ -105,12 +112,43 @@ class OutlierSummaryParams(_Params):
     _no_repeats = field_validator("columns")(_unique)
 
 
+class ClusteringParams(_Params):
+    """K-means on numeric columns. Rows with a missing value in them are excluded."""
+
+    operation: Literal["clustering"] = "clustering"
+    columns: tuple[str, ...] = Field(min_length=2, max_length=MAX_CLUSTER_COLUMNS)
+    k: int = Field(ge=2, le=MAX_CLUSTERS, description="Number of clusters")
+    standardize: bool = Field(default=True, description="Scale columns to mean 0, std 1 first")
+    random_state: int = Field(default=0, ge=0, le=MAX_RANDOM_STATE, description="Fixed seed")
+
+    _no_repeats = field_validator("columns")(_unique)
+
+
+class PcaParams(_Params):
+    """Principal component analysis of numeric columns (rows with missing values excluded)."""
+
+    operation: Literal["pca"] = "pca"
+    columns: tuple[str, ...] = Field(min_length=2, max_length=MAX_PCA_COLUMNS)
+    n_components: int = Field(default=2, ge=1, le=MAX_PCA_COMPONENTS)
+    standardize: bool = Field(default=True, description="Scale columns to mean 0, std 1 first")
+
+    _no_repeats = field_validator("columns")(_unique)
+
+    @model_validator(mode="after")
+    def _components_fit_columns(self) -> PcaParams:
+        if self.n_components > len(self.columns):
+            raise ValueError("n_components must not exceed the number of columns")
+        return self
+
+
 AnalysisStep = Annotated[
     SummaryStatsParams
     | GroupedAggregationParams
     | CorrelationParams
     | DistributionParams
-    | OutlierSummaryParams,
+    | OutlierSummaryParams
+    | ClusteringParams
+    | PcaParams,
     Field(discriminator="operation"),
 ]
 
@@ -134,7 +172,13 @@ class AnalysisPlan(BaseModel):
 def step_columns(step: AnalysisStep) -> tuple[str, ...]:
     """Every dataset column a step reads, in a stable order."""
     match step:
-        case SummaryStatsParams() | CorrelationParams() | OutlierSummaryParams():
+        case (
+            SummaryStatsParams()
+            | CorrelationParams()
+            | OutlierSummaryParams()
+            | ClusteringParams()
+            | PcaParams()
+        ):
             return step.columns
         case GroupedAggregationParams():
             return (*step.group_by, step.value_column)
@@ -163,6 +207,20 @@ def validate_step(step: AnalysisStep, profile: DatasetProfile, index: int = 0) -
     match step:
         case SummaryStatsParams() | CorrelationParams() | OutlierSummaryParams():
             _require_numeric(profile, index, step.columns)
+        case ClusteringParams():
+            _require_numeric(profile, index, step.columns)
+            if step.k > profile.row_count:
+                raise PlanValidationError(
+                    index, f"k={step.k} exceeds the dataset's {profile.row_count} rows"
+                )
+        case PcaParams():
+            _require_numeric(profile, index, step.columns)
+            if step.n_components > profile.row_count:
+                raise PlanValidationError(
+                    index,
+                    f"n_components={step.n_components} exceeds the dataset's "
+                    f"{profile.row_count} rows",
+                )
         case GroupedAggregationParams():
             for name in step.group_by:
                 kind = _lookup(profile, index, name).inferred_type

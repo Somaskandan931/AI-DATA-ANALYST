@@ -18,9 +18,14 @@ class Provenance(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
     dataset_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
-    rows_in_dataset: int = Field(ge=0)
+    rows_in_dataset: int = Field(
+        ge=0, description="Rows in the frame the operation ran on (after any cleaning)"
+    )
     rows_used: int = Field(ge=0, description="Rows that contributed to the result")
     library_versions: dict[str, str]
+    cleaning: tuple[str, ...] = Field(
+        default=(), description="Cleaning steps applied before the operation ran (EDA-04)"
+    )
 
 
 class AnalysisArtifact(BaseModel):

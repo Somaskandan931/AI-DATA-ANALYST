@@ -16,6 +16,7 @@ dependencies = [
   "numpy>=1.26",
   "scipy>=1.13",
   "scikit-learn>=1.5",
+  "threadpoolctl>=3.1",  # pins BLAS/OpenMP threads so clustering and PCA are reproducible
   "pydantic>=2.8",
   "sqlalchemy>=2.0",
   "sqlglot>=25.0",  # real SQL parser for the validation layer (no regex-only checks)
@@ -53,3 +54,8 @@ python_version = "3.11"
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["src"]
+
+# scikit-learn and threadpoolctl ship no type information; treat them as untyped imports.
+[[tool.mypy.overrides]]
+module = ["sklearn", "sklearn.*", "threadpoolctl"]
+ignore_missing_imports = true

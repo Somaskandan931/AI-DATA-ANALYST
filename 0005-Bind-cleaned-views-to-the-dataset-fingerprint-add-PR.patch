@@ -1,0 +1,162 @@
+From b8d8d2168fee3137d40d4f1ccb1a9a3a31752208 Mon Sep 17 00:00:00 2001
+From: "m1-analysis-core (draft)" <noreply@example.invalid>
+Date: Wed, 28 Oct 2026 03:34:48 +0000
+Subject: [PATCH 5/5] Bind cleaned views to the dataset fingerprint; add PR
+ description
+
+---
+ PR_DESCRIPTION.md                          | 63 ++++++++++++++++++++++
+ docs/ARCHITECTURE.md                       |  3 +-
+ src/ai_data_analyst/analysis/cleaning.py   |  7 ++-
+ src/ai_data_analyst/analysis/operations.py |  2 +
+ tests/unit/test_cleaning.py                | 14 ++++-
+ 5 files changed, 86 insertions(+), 3 deletions(-)
+ create mode 100644 PR_DESCRIPTION.md
+
+diff --git a/PR_DESCRIPTION.md b/PR_DESCRIPTION.md
+new file mode 100644
+index 0000000..551cc0e
+--- /dev/null
++++ b/PR_DESCRIPTION.md
+@@ -0,0 +1,63 @@
++# m1/analysis-core: clustering, PCA, cleaning view and chart specs
++
++**Branch:** `m1/analysis-core` (off `main` = the uploaded baseline)
++**Requirement IDs:** EDA-06 (clustering, PCA), EDA-04 (cleaning view), EDA-08 (chart specs)
++**Owner:** Somaskandan (M1) | **Reviewer:** Nishi or Prathin
++
++## What this adds
++
++| Area | Change |
++| --- | --- |
++| `analysis/plan.py` | `ClusteringParams`, `PcaParams`; `clustering` and `pca` join `OperationName`; column/type and row-count checks in `validate_step` |
++| `analysis/operations.py` | k-means and PCA (scikit-learn), `OperationInputError` (fails closed, carries the step index), `execute_plan_on_view` |
++| `analysis/cleaning.py` (new) | `CleaningPlan` (`drop_duplicates`, `drop_missing_rows`, `impute` mean/median) applied to a copy; `CleanedView` with log and fingerprint |
++| `analysis/artifact.py` | `Provenance.cleaning` (optional, defaults to empty) |
++| `visualization/charts.py` (new) | `ChartSpec`, `charts_for_artifacts`, `validate_chart` (traceable by step index and SHA-256 digest) |
++| `pyproject.toml` | declares `threadpoolctl`; mypy override for untyped scikit-learn |
++| `docs/ARCHITECTURE.md`, `README.md` | updated to match |
++
++## Not in this PR (on purpose)
++
++- **Row filters.** Waiting on the filter contract with Prathin. No filter types or fields were added.
++- `AnalysisPlan` / `AnalysisArtifact` stay in `analysis/`; nothing was moved into `models.py`.
++- Reporting, grounded chat and chart *rendering* (specs are data only).
++
++## Results
++
++Run on the PR branch (Python 3.12, pandas 3.0.2, numpy 2.4.4, scikit-learn 1.8.0):
++
++- `pytest`: **561 passed** (baseline: 468 passed). New tests: 93.
++- `ruff check`, `ruff format --check`, `mypy` (strict, 28 source files): clean.
++- `pytest -W error` on the analysis and chart test files: no warnings.
++
++How correctness is checked (independent of the code under test):
++
++- **PCA**: variance, ratios and loadings compared with a numpy `eigh` of the covariance matrix; loadings orthonormal; perfectly correlated columns give one component with ratio 1.0.
++- **Clustering**: known blobs (30/20/10 points) are recovered with the expected centroids; inertia and the size of the first cluster are recomputed from the reported centroids on the real sample data.
++- **Cleaning**: duplicates removed = the 5 in the expected profile; imputed values equal numpy mean/median of the raw strings; ingested and typed frames are unchanged afterwards.
++- **Charts**: values equal the artifact's numbers; edited, relabelled or re-pointed specs raise `ChartTraceError`.
++- Reproducibility: same seed gives identical results, also under `threadpool_limits(4)`.
++
++## Review notes (self-review of the diff)
++
++- Fixed during self-review: `execute_plan_on_view` first only compared row counts, so a view from a different dataset with the same row count was accepted. `CleanedView` now carries the dataset fingerprint and is rejected on mismatch (test added).
++- `Provenance.rows_in_dataset` now means "rows in the frame the operation ran on (after any cleaning)". Without cleaning it is unchanged. A clearer name would be a contract change, so I left it.
++- Resource limits: `k`, column and component counts are bounded by the plan types, rows by the ingestion limit, time by `max_execution_seconds` between steps. A single step is not interrupted. In an informal local run on one core, k=10 on 250,000 rows x 10 columns took about 11 s. That is not a benchmark and no latency claim is made.
++- Silhouette is estimated on a fixed-seed sample of 2,000 rows for larger inputs, with a warning, and is `None` when undefined.
++
++## Questions for Prathin
++
++1. Where should `AnalysisPlan` / `AnalysisArtifact` live (stay in `analysis/` or move to `models.py`)? They now include `clustering`, `pca`, and `Provenance.cleaning`; schema version is still `1.0` (additive only).
++2. Filter contract: proposed shape is `{column, op, value}` with `op` in `eq, ne, lt, le, gt, ge, in, is_null, not_null`, missing values never matching except `is_null`, validated against column types like the plan. OK to implement that next?
++3. Is `rows_in_dataset` fine as redefined above?
++
++## Checklist
++
++- [x] Baseline and uploaded P2 ZIP verified (baseline: 468 tests, ruff, format and mypy green before any change)
++- [x] Existing five operations and their tests untouched and green
++- [x] Clustering and PCA with validation, limits, reproducibility, edge-case and correctness tests
++- [x] EDA-04 cleaning view, raw data never modified
++- [x] EDA-08 chart specifications
++- [x] ARCHITECTURE.md updated
++- [ ] Review feedback addressed (waiting for review)
++- [ ] Filter contract and model placement agreed with Prathin
+diff --git a/docs/ARCHITECTURE.md b/docs/ARCHITECTURE.md
+index 52edacb..b69b724 100644
+--- a/docs/ARCHITECTURE.md
++++ b/docs/ARCHITECTURE.md
+@@ -89,7 +89,8 @@ agrees, since `chat/`, `reporting/` and `evaluation/` consume them.
+ strings nor the typed frame change, and return a `CleanedView` with the cleaned frame, a
+ human-readable log and the row counts before and after. A step that cannot work (nothing to
+ impute, or every row removed) raises `CleaningError`. Run a plan on a view with
+-`execute_plan_on_view`; each artifact then records the log in `provenance.cleaning`. Without a
++`execute_plan_on_view` (it rejects a view built for another dataset, by fingerprint); each artifact
++then records the log in `provenance.cleaning`. Without a
+ cleaning plan, `execute_plan` behaves as before and records an empty log.
+ 
+ ### Chart specifications (EDA-08)
+diff --git a/src/ai_data_analyst/analysis/cleaning.py b/src/ai_data_analyst/analysis/cleaning.py
+index f76853d..f30efa4 100644
+--- a/src/ai_data_analyst/analysis/cleaning.py
++++ b/src/ai_data_analyst/analysis/cleaning.py
+@@ -93,6 +93,7 @@ class CleanedView:
+     log: tuple[str, ...]
+     rows_before: int
+     rows_after: int
++    dataset_fingerprint: str
+ 
+ 
+ def validate_cleaning(plan: CleaningPlan, profile: DatasetProfile) -> None:
+@@ -165,7 +166,11 @@ def apply_cleaning(plan: CleaningPlan, frame: pd.DataFrame, profile: DatasetProf
+         if current.empty and len(frame) > 0:
+             raise CleaningError("cleaning removed every row; nothing is left to analyse")
+     return CleanedView(
+-        frame=current, log=tuple(log), rows_before=len(frame), rows_after=len(current)
++        frame=current,
++        log=tuple(log),
++        rows_before=len(frame),
++        rows_after=len(current),
++        dataset_fingerprint=profile.dataset_fingerprint,
+     )
+ 
+ 
+diff --git a/src/ai_data_analyst/analysis/operations.py b/src/ai_data_analyst/analysis/operations.py
+index 68819c5..81ff8e6 100644
+--- a/src/ai_data_analyst/analysis/operations.py
++++ b/src/ai_data_analyst/analysis/operations.py
+@@ -507,6 +507,8 @@ def execute_plan_on_view(
+     limits: LimitsConfig | None = None,
+ ) -> tuple[AnalysisArtifact, ...]:
+     """Like :func:`execute_plan`, on a cleaned view; every artifact records the cleaning log."""
++    if view.dataset_fingerprint != profile.dataset_fingerprint:
++        raise ValueError("cleaned view does not match the profile (fingerprint mismatch)")
+     if view.rows_before != profile.row_count:
+         raise ValueError("cleaned view does not match the profile (row count differs)")
+     return _run_plan(plan, view.frame, profile, limits, view.rows_after, view.log)
+diff --git a/tests/unit/test_cleaning.py b/tests/unit/test_cleaning.py
+index 6818ddf..0ef6bb3 100644
+--- a/tests/unit/test_cleaning.py
++++ b/tests/unit/test_cleaning.py
+@@ -264,5 +264,17 @@ def test_execute_plan_on_view_rejects_a_view_from_another_dataset(
+     other = load_csv(b"demand_mwh\n1\n2\n", "d.csv")
+     other_view = cleaned_view(other, profile_ingested(other), CleaningPlan())
+     plan = AnalysisPlan(steps=(SummaryStatsParams(columns=("demand_mwh",)),))
+-    with pytest.raises(ValueError, match="row count differs"):
++    with pytest.raises(ValueError, match="fingerprint mismatch"):
++        execute_plan_on_view(plan, other_view, profile)
++
++
++def test_a_view_of_another_dataset_with_the_same_row_count_is_rejected(
++    ingested: IngestedCSV, profile: DatasetProfile
++):
++    rows = "\n".join(f"{i}" for i in range(profile.row_count))
++    other = load_csv(f"demand_mwh\n{rows}\n".encode(), "d.csv")
++    other_view = cleaned_view(other, profile_ingested(other), CleaningPlan())
++    assert other_view.rows_after == profile.row_count
++    plan = AnalysisPlan(steps=(SummaryStatsParams(columns=("demand_mwh",)),))
++    with pytest.raises(ValueError, match="fingerprint mismatch"):
+         execute_plan_on_view(plan, other_view, profile)
+-- 
+2.43.0
+

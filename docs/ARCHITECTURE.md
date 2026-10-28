@@ -50,13 +50,61 @@ agrees, since `chat/`, `reporting/` and `evaluation/` consume them.
 
 - `AnalysisPlan`: 1 to 20 steps. Each step is one of the allow-listed operations, selected by
   the `operation` field: `summary_stats`, `grouped_aggregation`, `correlation`, `distribution`,
-  `outlier_summary` (clustering and PCA are still to come). Parameters are typed and bounded;
-  unknown fields are rejected, and no field carries an expression or code.
+  `outlier_summary`, `clustering`, `pca`. Parameters are typed and bounded; unknown fields are
+  rejected, and no field carries an expression or code.
 - `validate_plan(plan, profile)` checks columns exist and their inferred types suit the
   operation. `execute_plan` validates the whole plan first, so nothing runs on a bad plan, and
-  checks `max_execution_seconds` between steps.
+  checks `max_execution_seconds` between steps (a single step is not interrupted).
 - `AnalysisArtifact`: `operation`, `input_columns`, `parameters`, `result` (strict JSON, `None`
-  for undefined values), `warnings`, and `provenance` (dataset fingerprint, rows used, library
-  versions).
-- `typed_frame(ingested, profile)` builds the typed analysis view. It does not clean or impute;
-  the cleaning working view (EDA-04) is separate and still to do.
+  for undefined values), `warnings`, and `provenance` (dataset fingerprint, rows in the frame,
+  rows used, library versions, and the cleaning log).
+- `typed_frame(ingested, profile)` builds the typed analysis view. It does not clean or impute.
+
+### Clustering and PCA
+
+- `clustering`: k-means (`k` 2 to 10, 2 to 10 numeric columns). `standardize` defaults to
+  `true`; `random_state` is a bounded integer (default 0) that is always recorded in the
+  artifact's `parameters`. Clusters are numbered largest first (ties broken by centroid), and
+  centroids are reported in the original units. The result includes inertia, iterations and a
+  silhouette score (estimated on a fixed-seed sample of 2,000 rows for larger inputs; absent
+  when it is undefined).
+- `pca`: 2 to 20 numeric columns, 1 to 10 components (never more than the columns). Reports
+  explained variance, its ratio and cumulative ratio, and loadings. The sign of each component
+  is fixed so its largest-magnitude loading is positive.
+- Both use only rows with no missing value in the selected columns and warn how many rows were
+  excluded. They fail closed (`OperationInputError`, carrying the step index) when the data
+  cannot support the request: fewer complete or distinct rows than `k`, fewer rows than
+  components, or only constant columns. A constant column among others produces a warning. With
+  `standardize=false`, columns on very different scales produce a warning.
+- Reproducibility: fixed seeds, `svd_solver="full"`, and BLAS/OpenMP threads pinned to one while
+  the model runs, so a result does not depend on the machine's core count.
+- Resource limits: the plan types bound `k`, the column count and the component count; the row
+  count is bounded by the ingestion limit; `max_execution_seconds` is checked between steps.
+
+### Cleaning working view (EDA-04)
+
+`analysis/cleaning.py`. A `CleaningPlan` is a list of up to 10 allow-listed steps
+(`drop_duplicates`, `drop_missing_rows`, `impute` with `mean` or `median` on a numeric column).
+`apply_cleaning` / `cleaned_view` work on a copy of the typed frame, so neither the ingested
+strings nor the typed frame change, and return a `CleanedView` with the cleaned frame, a
+human-readable log and the row counts before and after. A step that cannot work (nothing to
+impute, or every row removed) raises `CleaningError`. Run a plan on a view with
+`execute_plan_on_view` (it rejects a view built for another dataset, by fingerprint); each artifact
+then records the log in `provenance.cleaning`. Without a
+cleaning plan, `execute_plan` behaves as before and records an empty log.
+
+### Chart specifications (EDA-08)
+
+`visualization/charts.py`. `charts_for_artifacts(artifacts)` returns `ChartSpec` objects: plain,
+JSON-serialisable data (kind, title, subtitle, axis labels, labels, values or matrix) with no
+rendering code. Histograms, bar charts (categories, grouped aggregations, outlier fractions,
+cluster sizes, PCA variance) and correlation heatmaps are supported; `summary_stats` is a table
+and gets no chart. Each spec records its artifact's step index and SHA-256 digest, the source
+columns, the cleaning log and the artifact's warnings. `validate_chart(spec, artifacts)` rebuilds
+the charts for that artifact and requires an exact match, so an edited or mismatched spec raises
+`ChartTraceError`.
+
+### Not yet implemented
+
+Row filters are deliberately absent until the filter contract is agreed with the contracts
+owner. Report assembly (`reporting/`) and grounded chat (`chat/`) are still to come.
