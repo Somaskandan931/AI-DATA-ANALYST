@@ -104,7 +104,38 @@ columns, the cleaning log and the artifact's warnings. `validate_chart(spec, art
 the charts for that artifact and requires an exact match, so an edited or mismatched spec raises
 `ChartTraceError`.
 
+### Report assembly (EDA-09)
+
+`reporting/`. `build_report(profile, artifacts, charts=None, *, title, source_name, generated_at)`
+returns a frozen `Report` (schema version `1.0`) with seven parts: dataset overview (from the
+`DatasetProfile`), methods and results (one of each per artifact, in plan order), charts, warnings,
+limitations and provenance. `render_html(report)` and `render_markdown(report)` turn it into files;
+`chart_svg(spec)` draws a `ChartSpec`.
+
+- **Grounding.** Every number is copied from the profile or an artifact; nothing is recomputed
+  from raw data, and no model-written text is included. The wording around the numbers is fixed.
+  Percentages in the overview and warnings are `count / row_count`, shown to one decimal.
+- **Fail closed (`ReportError`).** An artifact whose dataset fingerprint differs from the
+  profile's, one that used more rows than the dataset has, more than 20 steps, a result whose
+  shape is not what its operation produces, or a supplied chart that does not pass
+  `validate_chart`. When `charts` is omitted they are derived from the artifacts.
+- **Warnings.** Data-quality warnings from the profile (duplicates, missing values, candidate
+  outliers, constant or empty columns; at most 20 per kind, the rest summarised) come first,
+  then each artifact's own warnings labelled with their step. Limitations depend on which
+  operations ran and on whether cleaning was applied.
+- **Deterministic.** The same inputs give the same report and byte-identical files. No timestamp
+  is added unless the caller passes `generated_at`.
+- **HTML.** One self-contained file: no scripts, no external requests, charts as inline SVG, and
+  a Content-Security-Policy meta tag allowing only inline styles and `data:` images. All text from
+  the uploaded file (column names, group keys, category values, file name) is HTML-escaped.
+- **Markdown.** Charts appear as the table of values they plot, with title, source columns and
+  source artifact. Text from the file is backslash-escaped, so it cannot become formatting, a
+  link or raw HTML, and each table row stays on one line.
+- **Heatmap cells** show values rounded to two decimals so they fit; tooltips and the
+  correlation tables hold the exact values.
+
 ### Not yet implemented
 
 Row filters are deliberately absent until the filter contract is agreed with the contracts
-owner. Report assembly (`reporting/`) and grounded chat (`chat/`) are still to come.
+owner. Grounded chat (`chat/`) is still to come. The Streamlit download button for the report
+belongs to the UI integration (`ui/`), which calls `build_report` and the two renderers.

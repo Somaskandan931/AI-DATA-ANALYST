@@ -4,7 +4,7 @@ An AI-assisted analytics platform combining deterministic Auto-EDA for CSV files
 
 ## Project status
 
-**Stage:** P2 analysis core implemented in `analysis/` and `visualization/` (operations incl. clustering and PCA, cleaning view, chart specs); row filters, reporting and chat still to come.
+**Stage:** P2 analysis core implemented in `analysis/` and `visualization/` (operations incl. clustering and PCA, cleaning view, chart specs) and report assembly in `reporting/` (HTML and Markdown); row filters and chat still to come.
 **Tier:** T2
 **Collaborators:** Somaskandan, Nishi, Prathin
 
