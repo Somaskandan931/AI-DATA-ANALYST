@@ -41,3 +41,15 @@ SQLite has no database users, so a "read-only identity" is built from layered co
 ## Release gate
 
 All unsafe-query fixtures must be blocked before execution. A passing test suite is evidence for the tested cases, not proof of universal security.
+
+## Audit events
+
+Callers in `ingestion/`, `analysis/` and `sql_agent/` are responsible for building `AuditEvent` values and passing them to an `AuditSink`. The security package does not emit events automatically.
+
+The record contains: `schema_version`, `event_type`, `module`, `outcome`, `timestamp` (timezone-aware, zero UTC offset), optional `correlation_id`, `reason_codes`, `operation`, `dataset_fingerprint`, `subject_hash`, `referenced_tables`, `row_count`, `duration_ms`, and `truncated`.
+
+Only enums, patterned reason/operation/table codes, lowercase SHA-256 hashes, numbers and booleans are allowed. There is no free-text field: events must not carry SQL, parameter values, cell values, file contents, credentials or messages. M1 events may carry `operation` and `dataset_fingerprint`; M2 events may carry `referenced_tables` and `truncated`.
+
+A sink failure must never change a caller's validation or execution outcome. Use `safe_emit`, which catches `Exception` (not `BaseException`) and returns `False` without logging the exception or event contents.
+
+Hashes identify normalized SQL or canonical plan/step parameters; they are not anonymization. A low-entropy value (short SQL with literals, a small parameter set) can be guessed by brute force.
