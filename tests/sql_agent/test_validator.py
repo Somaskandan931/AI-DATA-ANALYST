@@ -86,6 +86,7 @@ VALID = [
     "SELECT name FROM customers WHERE id BETWEEN 1 AND 2 OR name LIKE 'C%'",
     "SELECT name FROM customers ORDER BY name DESC LIMIT 2 OFFSET 1",
     "SELECT DISTINCT customer_id FROM orders",
+    "SELECT SUM(total) OVER (PARTITION BY customer_id) FROM orders",
     "SELECT COUNT(*) FROM customers",
     (
         "SELECT COUNT(*) AS n, SUM(total) AS s, AVG(total) AS a, "
@@ -419,7 +420,6 @@ def test_empty_snapshot_denies_all_table_access():
         "SELECT name FROM customers INTERSECT SELECT name FROM customers",
         "WITH RECURSIVE c(n) AS (SELECT 1) SELECT n FROM c",
         ("WITH RECURSIVE c(n) AS (SELECT 1 UNION ALL SELECT n + 1 FROM c) SELECT n FROM c"),
-        "SELECT SUM(total) OVER (PARTITION BY customer_id) FROM orders",
         "SELECT * FROM customers NATURAL JOIN orders",
         "SELECT * FROM customers JOIN orders USING (id)",
         "SELECT name FROM customers INDEXED BY ix",
