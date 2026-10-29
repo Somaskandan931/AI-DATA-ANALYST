@@ -1,3 +1,4 @@
+
 [build-system]
 requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -10,7 +11,8 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-# Domain modules (ingestion, profiling, analysis, sql_agent, ...) must work without the UI.
+
+# Domain modules must work without the UI.
 dependencies = [
   "pandas>=2.2",
   "numpy>=1.26",
@@ -18,7 +20,7 @@ dependencies = [
   "scikit-learn>=1.5",
   "pydantic>=2.8",
   "sqlalchemy>=2.0",
-  "sqlglot>=25.0",  # real SQL parser for the validation layer (no regex-only checks)
+  "sqlglot>=25.0",
 ]
 
 [project.optional-dependencies]
@@ -36,6 +38,10 @@ gemini = [
   "google-genai>=1.0",
   "python-dotenv>=1.0",
 ]
+ollama = [
+  "ollama>=0.4",
+]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 
