@@ -164,8 +164,16 @@ frozen `ChatAnswer` (`status`, `text`, `evidence`, `assumptions`, `warnings`, an
 - Text from the uploaded file (column names, group keys) appears verbatim in answers; the UI
   must render it as text, not markup.
 
+### Auto-EDA workspace (APP-01)
+
+`ui/workspace.py` holds the workspace state and actions with no Streamlit import (load an upload
+or the sample, set a cleaning plan, run analysis steps, chat, build the report), so they are unit
+tested directly. `ui/auto_eda.py` is the Streamlit page: upload, profile, analysis, chat and
+report download (HTML and Markdown). `app.py` mounts it as the Auto-EDA workspace. Changing the
+cleaning plan discards computed artifacts, so every artifact in a session describes the same
+view of the data.
+
 ### Not yet implemented
 
 Row filters are deliberately absent until the filter contract is agreed with the contracts
-owner. The Streamlit download button for the report belongs to the UI integration (`ui/`), which
-calls `build_report` and the two renderers.
+owner. The SQL Analyst workspace belongs to M2.
