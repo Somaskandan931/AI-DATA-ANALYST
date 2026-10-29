@@ -134,8 +134,38 @@ limitations and provenance. `render_html(report)` and `render_markdown(report)` 
 - **Heatmap cells** show values rounded to two decimals so they fit; tooltips and the
   correlation tables hold the exact values.
 
+### Grounded chat (EDA-10)
+
+`chat/`. `answer_question(question, profile, *, artifacts=(), data=None, proposer=None)` returns a
+frozen `ChatAnswer` (`status`, `text`, `evidence`, `assumptions`, `warnings`, and the new
+`artifact` when one was computed).
+
+- **Routing.** `route_question` uses fixed rules only: the question is matched against column
+  names and a closed vocabulary, and is never executed or echoed. It yields a `Lookup` (answer
+  from the `DatasetProfile`: counts, duplicates, missing values, per-column statistics, outlier
+  counts, column list), a `Propose` (one typed, allow-listed analysis step: summary statistics,
+  grouped aggregation, correlation, distribution, clustering, PCA) or `Unsupported` with the
+  list of supported questions. Defaults the router fills in (k=3, two components, the mean, all
+  numeric columns) are listed in `assumptions`.
+- **Answering.** A profile lookup needs nothing computed (`status="profile"`). A proposed step
+  is validated against the profile; if an artifact with the same parameters (and the same
+  cleaning log) exists it is reused (`"artifact"`), otherwise the step is run on `data`, the typed
+  frame or a `CleanedView`, and returned (`"computed"`). With no data, or when the data cannot
+  support the operation, the answer says so (`"unsupported"`).
+- **Grounding.** Text is built only through a writer that formats a value and records an
+  `Evidence` entry (profile field or artifact result path) in one step. A final check,
+  `ungrounded_numbers`, fails closed: an answer containing a number without evidence is replaced
+  by an `unsupported` answer. No model-written text is shown.
+- **Model use.** Optional and narrow: a `StepProposer` may return a typed `AnalysisStep` for a
+  question the rules do not cover. The step goes through the same validation as any other and
+  the adapter's text is never shown. No provider is imported by `chat/`.
+- **Fail closed (`ChatError`).** An artifact or cleaned view from another dataset, a frame whose
+  row count differs from the profile, or a question over 2,000 characters.
+- Text from the uploaded file (column names, group keys) appears verbatim in answers; the UI
+  must render it as text, not markup.
+
 ### Not yet implemented
 
 Row filters are deliberately absent until the filter contract is agreed with the contracts
-owner. Grounded chat (`chat/`) is still to come. The Streamlit download button for the report
-belongs to the UI integration (`ui/`), which calls `build_report` and the two renderers.
+owner. The Streamlit download button for the report belongs to the UI integration (`ui/`), which
+calls `build_report` and the two renderers.
