@@ -74,6 +74,14 @@ _AGG_WORDS: Final = (
     (r"maximum|highest|largest|biggest|\bmax\b", "max"),
     (r"count|number of|how many", "count"),
 )
+_FILTER_INTENT: Final = re.compile(
+    r"[<>=]|\bwhere\b|\bwhich rows\b|\b(?:drop|remove|delete|filter|exclude|keep)\b"
+    r"|\b(?:rows|records)\s+(?:have|has|with|that|whose)\b"
+    r"|\bshow (?:me )?(?:the )?(?:rows|records)\b"
+)
+_UNSUPPORTED_STAT: Final = re.compile(
+    r"percentile|quantile|\bmode\b|variance|skew|kurtosis|\brange\b|\bcv\b"
+)
 _GROUP_WORD: Final = re.compile(r"\b(?:by|per|for each|grouped by|broken down by|across)\b")
 
 
@@ -225,6 +233,12 @@ def route_question(question: str, profile: DatasetProfile) -> Route:  # noqa: C9
             )
         return Propose(PcaParams(columns=chosen[0], n_components=components), assumptions)
 
+    if _FILTER_INTENT.search(text):
+        return Unsupported(
+            "Row filtering is not available, so questions about a subset of rows cannot be "
+            "answered."
+        )
+
     group_match = _GROUP_WORD.search(text)
     if group_match and len(named) >= 2:
         after = [n for p, n in mentions if p >= group_match.end()]
@@ -290,6 +304,11 @@ def route_question(question: str, profile: DatasetProfile) -> Route:  # noqa: C9
         return Lookup("row_count")
 
     stat = _first(text, _STAT_WORDS)
+    if stat is None and _UNSUPPORTED_STAT.search(text):
+        return Unsupported(
+            "That statistic is not computed. Available: mean, median, minimum, maximum, "
+            "standard deviation, quartiles and distinct count."
+        )
     if stat is not None and len(named) == 1:
         return Lookup("stat", named[0], stat)  # type: ignore[arg-type]
     if re.search(r"data ?type|what type|type of", text) and len(named) == 1:

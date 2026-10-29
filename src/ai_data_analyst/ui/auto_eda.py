@@ -136,8 +136,14 @@ def _cleaning_tab(workspace: Workspace) -> None:
         if drop_missing:
             steps.append(DropMissingRowsStep(columns=tuple(drop_missing)))
         steps.extend(ImputeStep(column=name, strategy=strategy) for name in impute)
-        _guard(lambda: ws_api.set_cleaning(workspace, CleaningPlan(steps=tuple(steps))))
-        st.rerun()
+        plan = CleaningPlan(steps=tuple(steps))
+
+        def apply() -> bool:
+            ws_api.set_cleaning(workspace, plan)
+            return True
+
+        if _guard(apply):  # on failure keep the page so the error stays visible
+            st.rerun()
     if right.button("Use the data as uploaded"):
         ws_api.set_cleaning(workspace, CleaningPlan())
         st.rerun()
@@ -249,7 +255,7 @@ def _results(workspace: Workspace) -> None:
     if report is None:
         return
     for result in report.results:
-        with st.expander(f"Step {result.step + 1}: {result.title}", expanded=False):
+        with st.expander(result.title, expanded=False):
             method = report.methods[result.step]
             st.text(f"Rows used: {method.rows_used} of {method.rows_in_dataset}")
             for warning in workspace.artifacts[result.step].warnings:
@@ -294,8 +300,7 @@ def _chat_tab(workspace: Workspace) -> None:
         with st.chat_message("assistant"):
             _show_answer(answer)
     new_question = st.chat_input("Ask about this dataset")
-    if new_question:
-        _guard(lambda: ws_api.ask(workspace, new_question))
+    if new_question and _guard(lambda: ws_api.ask(workspace, new_question)) is not None:
         st.rerun()
 
 

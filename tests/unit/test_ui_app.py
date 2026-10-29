@@ -68,3 +68,19 @@ def test_analysis_form_runs_a_step_and_shows_errors() -> None:
     next(s for s in at.selectbox if s.label == "Analysis").select("correlation").run()
     next(b for b in at.button if b.label == "Run").click().run()
     assert not at.exception and at.error
+
+
+def test_chat_error_stays_visible() -> None:
+    at = _sample(_started())
+    at.chat_input[0].set_value("x" * 2500).run()
+    assert not at.exception
+    assert any("longer than 2000" in e.value for e in at.error)
+
+
+def test_result_heading_has_one_step_prefix() -> None:
+    at = _sample(_started())
+    next(s for s in at.selectbox if s.label == "Analysis").select("summary_stats").run()
+    next(m for m in at.multiselect if m.label == "Numeric columns").select("demand_mwh")
+    next(b for b in at.button if b.label == "Run").click().run()
+    labels = [e.label for e in at.expander if "Summary statistics" in e.label]
+    assert labels == ["Step 1: Summary statistics"]
