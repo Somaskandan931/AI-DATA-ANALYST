@@ -88,6 +88,7 @@ _ALLOWED_NODES: frozenset[type[exp.Expr]] = frozenset(
         exp.Neg,
         exp.DPipe,
         # Expressions
+        exp.Window,
         exp.Case,
         exp.If,
         exp.Cast,
