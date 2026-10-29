@@ -104,7 +104,76 @@ columns, the cleaning log and the artifact's warnings. `validate_chart(spec, art
 the charts for that artifact and requires an exact match, so an edited or mismatched spec raises
 `ChartTraceError`.
 
+### Report assembly (EDA-09)
+
+`reporting/`. `build_report(profile, artifacts, charts=None, *, title, source_name, generated_at)`
+returns a frozen `Report` (schema version `1.0`) with seven parts: dataset overview (from the
+`DatasetProfile`), methods and results (one of each per artifact, in plan order), charts, warnings,
+limitations and provenance. `render_html(report)` and `render_markdown(report)` turn it into files;
+`chart_svg(spec)` draws a `ChartSpec`.
+
+- **Grounding.** Every number is copied from the profile or an artifact; nothing is recomputed
+  from raw data, and no model-written text is included. The wording around the numbers is fixed.
+  Percentages in the overview and warnings are `count / row_count`, shown to one decimal.
+- **Fail closed (`ReportError`).** An artifact whose dataset fingerprint differs from the
+  profile's, one that used more rows than the dataset has, more than 20 steps, a result whose
+  shape is not what its operation produces, or a supplied chart that does not pass
+  `validate_chart`. When `charts` is omitted they are derived from the artifacts.
+- **Warnings.** Data-quality warnings from the profile (duplicates, missing values, candidate
+  outliers, constant or empty columns; at most 20 per kind, the rest summarised) come first,
+  then each artifact's own warnings labelled with their step. Limitations depend on which
+  operations ran and on whether cleaning was applied.
+- **Deterministic.** The same inputs give the same report and byte-identical files. No timestamp
+  is added unless the caller passes `generated_at`.
+- **HTML.** One self-contained file: no scripts, no external requests, charts as inline SVG, and
+  a Content-Security-Policy meta tag allowing only inline styles and `data:` images. All text from
+  the uploaded file (column names, group keys, category values, file name) is HTML-escaped.
+- **Markdown.** Charts appear as the table of values they plot, with title, source columns and
+  source artifact. Text from the file is backslash-escaped, so it cannot become formatting, a
+  link or raw HTML, and each table row stays on one line.
+- **Heatmap cells** show values rounded to two decimals so they fit; tooltips and the
+  correlation tables hold the exact values.
+
+### Grounded chat (EDA-10)
+
+`chat/`. `answer_question(question, profile, *, artifacts=(), data=None, proposer=None)` returns a
+frozen `ChatAnswer` (`status`, `text`, `evidence`, `assumptions`, `warnings`, and the new
+`artifact` when one was computed).
+
+- **Routing.** `route_question` uses fixed rules only: the question is matched against column
+  names and a closed vocabulary, and is never executed or echoed. It yields a `Lookup` (answer
+  from the `DatasetProfile`: counts, duplicates, missing values, per-column statistics, outlier
+  counts, column list), a `Propose` (one typed, allow-listed analysis step: summary statistics,
+  grouped aggregation, correlation, distribution, clustering, PCA) or `Unsupported` with the
+  list of supported questions. Defaults the router fills in (k=3, two components, the mean, all
+  numeric columns) are listed in `assumptions`.
+- **Answering.** A profile lookup needs nothing computed (`status="profile"`). A proposed step
+  is validated against the profile; if an artifact with the same parameters (and the same
+  cleaning log) exists it is reused (`"artifact"`), otherwise the step is run on `data`, the typed
+  frame or a `CleanedView`, and returned (`"computed"`). With no data, or when the data cannot
+  support the operation, the answer says so (`"unsupported"`).
+- **Grounding.** Text is built only through a writer that formats a value and records an
+  `Evidence` entry (profile field or artifact result path) in one step. A final check,
+  `ungrounded_numbers`, fails closed: an answer containing a number without evidence is replaced
+  by an `unsupported` answer. No model-written text is shown.
+- **Model use.** Optional and narrow: a `StepProposer` may return a typed `AnalysisStep` for a
+  question the rules do not cover. The step goes through the same validation as any other and
+  the adapter's text is never shown. No provider is imported by `chat/`.
+- **Fail closed (`ChatError`).** An artifact or cleaned view from another dataset, a frame whose
+  row count differs from the profile, or a question over 2,000 characters.
+- Text from the uploaded file (column names, group keys) appears verbatim in answers; the UI
+  must render it as text, not markup.
+
+### Auto-EDA workspace (APP-01)
+
+`ui/workspace.py` holds the workspace state and actions with no Streamlit import (load an upload
+or the sample, set a cleaning plan, run analysis steps, chat, build the report), so they are unit
+tested directly. `ui/auto_eda.py` is the Streamlit page: upload, profile, analysis, chat and
+report download (HTML and Markdown). `app.py` mounts it as the Auto-EDA workspace. Changing the
+cleaning plan discards computed artifacts, so every artifact in a session describes the same
+view of the data.
+
 ### Not yet implemented
 
 Row filters are deliberately absent until the filter contract is agreed with the contracts
-owner. Report assembly (`reporting/`) and grounded chat (`chat/`) are still to come.
+owner. The SQL Analyst workspace belongs to M2.
