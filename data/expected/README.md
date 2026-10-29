@@ -16,4 +16,28 @@ independent of pandas and of the application's profiling code.
 - `dataset_fingerprint`: SHA-256 of the raw file bytes (line endings pinned to LF).
 - Missing values: empty cells.
 
-SQL benchmark expected result sets will be added here when P4 starts.
+
+## SQL benchmark
+
+The M2 text-to-SQL benchmark consists of:
+
+- `sql_benchmark_seed.sql` — deterministic SQLite schema and sample data.
+- `sql_benchmark.json` — benchmark questions and expected result sets.
+- `tests/sql_agent/test_benchmark_fixtures.py` — automated checks for benchmark structure and seed data (path relative to the repository root).
+
+### Coverage
+
+The benchmark includes:
+
+- Basic filtering
+- NULL values
+- Duplicate values
+- Table joins
+- Empty result sets
+- Boundary comparisons
+
+### Verification
+
+Expected result sets have been checked against SQLite independently of the SQL generator. The fixture tests verify required coverage, unique case IDs, and the seeded database structure.
+
+**Important:** These fixture tests do not measure model accuracy or latency. Those metrics require the evaluation runner and an actual benchmark run.

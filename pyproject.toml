@@ -1,3 +1,4 @@
+
 [build-system]
 requires = ["setuptools>=77", "wheel"]
 build-backend = "setuptools.build_meta"
@@ -10,16 +11,17 @@ readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
 requires-python = ">=3.11"
-# Domain modules (ingestion, profiling, analysis, sql_agent, ...) must work without the UI.
+
+# Domain modules must work without the UI.
 dependencies = [
   "pandas>=2.2",
   "numpy>=1.26",
   "scipy>=1.13",
   "scikit-learn>=1.5",
-  "threadpoolctl>=3.1",  # pins BLAS/OpenMP threads so clustering and PCA are reproducible
+  "threadpoolctl>=3.1",
   "pydantic>=2.8",
   "sqlalchemy>=2.0",
-  "sqlglot>=25.0",  # real SQL parser for the validation layer (no regex-only checks)
+  "sqlglot>=25.0",
 ]
 
 [project.optional-dependencies]
@@ -33,10 +35,8 @@ dev = [
   "ruff>=0.6",
   "mypy>=1.11",
   "pandas-stubs>=2.2",
-  # mypy resolves imports from the installed environment, so the optional LLM provider
-  # packages must be present wherever the type-check runs (CI installs only ".[dev]").
   "google-genai>=1.0",
-  "ollama>=0.3",
+  "ollama>=0.4",
   "python-dotenv>=1.0",
 ]
 gemini = [
@@ -44,9 +44,9 @@ gemini = [
   "python-dotenv>=1.0",
 ]
 ollama = [
-  "ollama>=0.3",
-  "python-dotenv>=1.0",  # provider_factory.py loads .env regardless of the chosen provider
+  "ollama>=0.4",
 ]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

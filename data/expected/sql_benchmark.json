@@ -1,0 +1,81 @@
+{
+  "benchmark_version": "1.0",
+  "description": "Deterministic SQLite benchmark for the M2 text-to-SQL agent",
+  "cases": [
+    {
+      "id": "SQL-BENCH-01",
+      "category": "basic_filter",
+      "question": "Show the names of customers from Chennai, ordered by customer ID",
+      "reference_sql": "SELECT name FROM customers WHERE city = 'Chennai' ORDER BY customer_id",
+      "expected_columns": ["name"],
+      "expected_rows": [["Asha"], ["Mina"]]
+    },
+    {
+      "id": "SQL-BENCH-02",
+      "category": "null_values",
+      "question": "Show the customer IDs and names of customers whose city is unknown",
+      "reference_sql": "SELECT customer_id, name FROM customers WHERE city IS NULL",
+      "expected_columns": ["customer_id", "name"],
+      "expected_rows": [[4, "Asha"]]
+    },
+    {
+      "id": "SQL-BENCH-03",
+      "category": "duplicates",
+      "question": "Count customers for each name, including names that occur more than once, ordered alphabetically",
+      "reference_sql": "SELECT name, COUNT(*) as customer_count FROM customers GROUP BY name ORDER BY name",
+      "expected_columns": ["name", "customer_count"],
+      "expected_rows": [
+        ["Asha", 2],
+        ["Kiran", 1],
+        ["Mina", 1],
+        ["Ravi", 1]
+      ]
+    },
+    {
+      "id": "SQL-BENCH-04",
+      "category": "join",
+      "question": "Show each order ID, customer name, and amount, ordered by order ID",
+      "reference_sql": "SELECT o.order_id, c.name, o.amount FROM orders o JOIN customers c ON o.customer_id = c.customer_id ORDER BY o.order_id",
+      "expected_columns": ["order_id", "name", "amount"],
+      "expected_rows": [
+        [101, "Asha", 100.0],
+        [102, "Asha", 150.0],
+        [103, "Ravi", 200.0],
+        [104, "Mina", 100.0],
+        [105, "Asha", 50.0]
+      ]
+    },
+    {
+      "id": "SQL-BENCH-05",
+      "category": "empty_results",
+      "question": "Show order IDs for orders with an amount greater than 1000, ordered by order ID",
+      "reference_sql": "SELECT order_id FROM orders WHERE amount > 1000 ORDER BY order_id",
+      "expected_columns": ["order_id"],
+      "expected_rows": []
+    },
+    {
+      "id": "SQL-BENCH-06",
+      "category": "boundary",
+      "question": "Show order IDs with an amount exactly equal to 100, ordered by order ID",
+      "reference_sql": "SELECT order_id FROM orders WHERE amount = 100 ORDER BY order_id",
+      "expected_columns": ["order_id"],
+      "expected_rows": [[101], [104]]
+    },
+    {
+      "id": "SQL-BENCH-07",
+      "category": "boundary",
+      "question": "Show order IDs with an amount greater than 100, ordered by order ID",
+      "reference_sql": "SELECT order_id FROM orders WHERE amount > 100 ORDER BY order_id",
+      "expected_columns": ["order_id"],
+      "expected_rows": [[102], [103]]
+    },
+    {
+      "id": "SQL-BENCH-08",
+      "category": "null_values",
+      "question": "Count customers whose city is NULL",
+      "reference_sql": "SELECT COUNT(*) as unknown_city_count FROM customers WHERE city IS NULL",
+      "expected_columns": ["unknown_city_count"],
+      "expected_rows": [[1]]
+    }
+  ]
+}
