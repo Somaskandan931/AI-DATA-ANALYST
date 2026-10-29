@@ -1,0 +1,1389 @@
+From c1bfa856de90932fc567dba46b3dc1bd0e4498d2 Mon Sep 17 00:00:00 2001
+From: "m1-analysis-core (draft)" <noreply@example.invalid>
+Date: Wed, 28 Oct 2026 03:34:48 +0000
+Subject: [PATCH 2/5] EDA-06, EDA-04: clustering, PCA and the cleaning working
+ view
+
+- ClusteringParams/PcaParams with bounded, typed parameters and a fixed seed
+- K-means and PCA via scikit-learn: complete-row handling, fail-closed input errors,
+  reproducible results (threads pinned), warnings for excluded rows, constant and
+  unscaled columns
+- CleaningPlan (drop_duplicates, drop_missing_rows, impute) applied to a copy; log recorded in
+  Provenance.cleaning; execute_plan_on_view
+- threadpoolctl declared as a dependency; mypy override for untyped sklearn
+---
+ pyproject.toml                             |   6 +
+ src/ai_data_analyst/analysis/__init__.py   |  30 ++
+ src/ai_data_analyst/analysis/artifact.py   |   7 +-
+ src/ai_data_analyst/analysis/cleaning.py   | 174 ++++++++++
+ src/ai_data_analyst/analysis/operations.py | 230 ++++++++++++-
+ src/ai_data_analyst/analysis/plan.py       |  64 +++-
+ tests/unit/test_analysis_ml.py             | 360 +++++++++++++++++++++
+ tests/unit/test_cleaning.py                | 268 +++++++++++++++
+ 8 files changed, 1124 insertions(+), 15 deletions(-)
+ create mode 100644 src/ai_data_analyst/analysis/cleaning.py
+ create mode 100644 tests/unit/test_analysis_ml.py
+ create mode 100644 tests/unit/test_cleaning.py
+
+diff --git a/pyproject.toml b/pyproject.toml
+index 2953edb..5aceb0b 100644
+--- a/pyproject.toml
++++ b/pyproject.toml
+@@ -16,6 +16,7 @@ dependencies = [
+   "numpy>=1.26",
+   "scipy>=1.13",
+   "scikit-learn>=1.5",
++  "threadpoolctl>=3.1",  # pins BLAS/OpenMP threads so clustering and PCA are reproducible
+   "pydantic>=2.8",
+   "sqlalchemy>=2.0",
+   "sqlglot>=25.0",  # real SQL parser for the validation layer (no regex-only checks)
+@@ -53,3 +54,8 @@ python_version = "3.11"
+ strict = true
+ plugins = ["pydantic.mypy"]
+ files = ["src"]
++
++# scikit-learn and threadpoolctl ship no type information; treat them as untyped imports.
++[[tool.mypy.overrides]]
++module = ["sklearn", "sklearn.*", "threadpoolctl"]
++ignore_missing_imports = true
+diff --git a/src/ai_data_analyst/analysis/__init__.py b/src/ai_data_analyst/analysis/__init__.py
+index 57361a8..507cdef 100644
+--- a/src/ai_data_analyst/analysis/__init__.py
++++ b/src/ai_data_analyst/analysis/__init__.py
+@@ -1,21 +1,37 @@
+ """Controlled Auto-EDA: allow-listed operations, typed plans and artifacts."""
+ 
+ from ai_data_analyst.analysis.artifact import AnalysisArtifact, Provenance
++from ai_data_analyst.analysis.cleaning import (
++    CleanedView,
++    CleaningError,
++    CleaningPlan,
++    CleaningStep,
++    DropDuplicatesStep,
++    DropMissingRowsStep,
++    ImputeStep,
++    apply_cleaning,
++    cleaned_view,
++    validate_cleaning,
++)
+ from ai_data_analyst.analysis.operations import (
+     OPERATIONS,
+     ExecutionTimeError,
++    OperationInputError,
+     execute_plan,
++    execute_plan_on_view,
+     execute_step,
+ )
+ from ai_data_analyst.analysis.plan import (
+     ANALYSIS_SCHEMA_VERSION,
+     AnalysisPlan,
+     AnalysisStep,
++    ClusteringParams,
+     CorrelationParams,
+     DistributionParams,
+     GroupedAggregationParams,
+     OperationName,
+     OutlierSummaryParams,
++    PcaParams,
+     PlanValidationError,
+     SummaryStatsParams,
+     step_columns,
+@@ -30,19 +46,33 @@ __all__ = [
+     "AnalysisArtifact",
+     "AnalysisPlan",
+     "AnalysisStep",
++    "CleanedView",
++    "CleaningError",
++    "CleaningPlan",
++    "CleaningStep",
++    "ClusteringParams",
+     "CorrelationParams",
+     "DistributionParams",
++    "DropDuplicatesStep",
++    "DropMissingRowsStep",
+     "ExecutionTimeError",
+     "GroupedAggregationParams",
++    "ImputeStep",
++    "OperationInputError",
+     "OperationName",
+     "OutlierSummaryParams",
++    "PcaParams",
+     "PlanValidationError",
+     "Provenance",
+     "SummaryStatsParams",
++    "apply_cleaning",
++    "cleaned_view",
+     "execute_plan",
++    "execute_plan_on_view",
+     "execute_step",
+     "step_columns",
+     "typed_frame",
++    "validate_cleaning",
+     "validate_plan",
+     "validate_step",
+ ]
+diff --git a/src/ai_data_analyst/analysis/artifact.py b/src/ai_data_analyst/analysis/artifact.py
+index 548f14b..997c17b 100644
+--- a/src/ai_data_analyst/analysis/artifact.py
++++ b/src/ai_data_analyst/analysis/artifact.py
+@@ -18,9 +18,14 @@ class Provenance(BaseModel):
+     model_config = ConfigDict(extra="forbid", frozen=True)
+ 
+     dataset_fingerprint: str = Field(pattern=r"^[0-9a-f]{64}$")
+-    rows_in_dataset: int = Field(ge=0)
++    rows_in_dataset: int = Field(
++        ge=0, description="Rows in the frame the operation ran on (after any cleaning)"
++    )
+     rows_used: int = Field(ge=0, description="Rows that contributed to the result")
+     library_versions: dict[str, str]
++    cleaning: tuple[str, ...] = Field(
++        default=(), description="Cleaning steps applied before the operation ran (EDA-04)"
++    )
+ 
+ 
+ class AnalysisArtifact(BaseModel):
+diff --git a/src/ai_data_analyst/analysis/cleaning.py b/src/ai_data_analyst/analysis/cleaning.py
+new file mode 100644
+index 0000000..f76853d
+--- /dev/null
++++ b/src/ai_data_analyst/analysis/cleaning.py
+@@ -0,0 +1,174 @@
++"""Cleaning working view (EDA-04).
++
++Cleaning never touches the ingested data. It takes the typed analysis frame, applies a short
++list of explicit, allow-listed steps to a *copy*, and returns the result together with a
++human-readable log. The log travels with every artifact (``Provenance.cleaning``), so a chart
++or report can always say which rows were removed or filled in before a number was computed.
++
++Nothing is cleaned unless a :class:`CleaningPlan` asks for it: the default analysis path
++(``execute_plan`` on :func:`~ai_data_analyst.analysis.view.typed_frame`) keeps missing cells.
++Cleaning steps carry no expressions or code, and ``extra="forbid"`` rejects unknown fields.
++"""
++
++from __future__ import annotations
++
++from dataclasses import dataclass
++from typing import Annotated, Final, Literal
++
++import numpy as np
++import pandas as pd
++from pydantic import BaseModel, ConfigDict, Field, field_validator
++
++from ..ingestion import IngestedCSV
++from ..models import DatasetProfile
++from .plan import ANALYSIS_SCHEMA_VERSION, PlanValidationError
++from .view import typed_frame
++
++MAX_CLEANING_STEPS: Final = 10
++_NUMERIC_TYPES: Final = frozenset({"integer", "float"})
++
++
++class CleaningError(ValueError):
++    """A cleaning step cannot be applied to the data (for example, nothing left to impute)."""
++
++
++class _Step(BaseModel):
++    model_config = ConfigDict(extra="forbid", frozen=True)
++
++
++class DropDuplicatesStep(_Step):
++    """Remove rows identical to an earlier row; the first occurrence is kept."""
++
++    kind: Literal["drop_duplicates"] = "drop_duplicates"
++
++
++class DropMissingRowsStep(_Step):
++    """Remove rows that have a missing value in any of the listed columns."""
++
++    kind: Literal["drop_missing_rows"] = "drop_missing_rows"
++    columns: tuple[str, ...] = Field(min_length=1, max_length=50)
++
++    @field_validator("columns")
++    @classmethod
++    def _unique_columns(cls, value: tuple[str, ...]) -> tuple[str, ...]:
++        if len(set(value)) != len(value):
++            raise ValueError("columns must not repeat")
++        return value
++
++
++class ImputeStep(_Step):
++    """Fill the missing values of one numeric column with its mean or median."""
++
++    kind: Literal["impute"] = "impute"
++    column: str
++    strategy: Literal["mean", "median"]
++
++
++CleaningStep = Annotated[
++    DropDuplicatesStep | DropMissingRowsStep | ImputeStep, Field(discriminator="kind")
++]
++
++
++class CleaningPlan(BaseModel):
++    """Ordered cleaning steps, applied in sequence to a copy of the typed frame."""
++
++    model_config = ConfigDict(extra="forbid", frozen=True)
++
++    schema_version: str = ANALYSIS_SCHEMA_VERSION
++    steps: tuple[CleaningStep, ...] = Field(default=(), max_length=MAX_CLEANING_STEPS)
++
++    @field_validator("schema_version")
++    @classmethod
++    def _schema_version_must_be_current(cls, value: str) -> str:
++        if value != ANALYSIS_SCHEMA_VERSION:
++            raise ValueError(f"schema_version must be {ANALYSIS_SCHEMA_VERSION!r}")
++        return value
++
++
++@dataclass(frozen=True)
++class CleanedView:
++    """A cleaned copy of the typed frame, with what was done to produce it."""
++
++    frame: pd.DataFrame
++    log: tuple[str, ...]
++    rows_before: int
++    rows_after: int
++
++
++def validate_cleaning(plan: CleaningPlan, profile: DatasetProfile) -> None:
++    """Raise :class:`PlanValidationError` unless every step fits *profile*."""
++    types = {c.name: c.inferred_type for c in profile.columns}
++    for index, step in enumerate(plan.steps):
++        match step:
++            case DropDuplicatesStep():
++                continue
++            case DropMissingRowsStep():
++                for name in step.columns:
++                    if name not in types:
++                        raise PlanValidationError(index, f"unknown column {name!r}")
++            case ImputeStep():
++                if step.column not in types:
++                    raise PlanValidationError(index, f"unknown column {step.column!r}")
++                if types[step.column] not in _NUMERIC_TYPES:
++                    raise PlanValidationError(
++                        index,
++                        f"cannot impute {step.column!r}: {types[step.column]} is not numeric",
++                    )
++
++
++def _drop_duplicates(frame: pd.DataFrame) -> tuple[pd.DataFrame, str]:
++    keep = ~frame.duplicated(keep="first")
++    removed = int((~keep).sum())
++    return frame.loc[keep].reset_index(drop=True), (
++        f"Removed {removed} duplicate rows (kept the first occurrence)"
++    )
++
++
++def _drop_missing(frame: pd.DataFrame, columns: tuple[str, ...]) -> tuple[pd.DataFrame, str]:
++    keep = frame[list(columns)].notna().all(axis=1)
++    removed = int((~keep).sum())
++    names = ", ".join(columns)
++    return frame.loc[keep].reset_index(drop=True), (
++        f"Removed {removed} rows with a missing value in: {names}"
++    )
++
++
++def _impute(frame: pd.DataFrame, step: ImputeStep) -> tuple[pd.DataFrame, str]:
++    present = frame[step.column].dropna()
++    filled = int(frame[step.column].isna().sum())
++    if present.empty:
++        raise CleaningError(f"cannot impute {step.column!r}: it has no non-missing values")
++    values = present.to_numpy(dtype=np.float64)
++    fill = float(np.median(values) if step.strategy == "median" else values.mean())
++    result = frame.copy()
++    result[step.column] = result[step.column].fillna(fill)
++    return result, (
++        f"Filled {filled} missing values in {step.column!r} with the {step.strategy} "
++        f"({round(fill, 6)})"
++    )
++
++
++def apply_cleaning(plan: CleaningPlan, frame: pd.DataFrame, profile: DatasetProfile) -> CleanedView:
++    """Apply *plan* to a copy of *frame*; neither *frame* nor any ingested data changes."""
++    validate_cleaning(plan, profile)
++    current = frame.copy()
++    log: list[str] = []
++    for step in plan.steps:
++        match step:
++            case DropDuplicatesStep():
++                current, note = _drop_duplicates(current)
++            case DropMissingRowsStep():
++                current, note = _drop_missing(current, step.columns)
++            case ImputeStep():
++                current, note = _impute(current, step)
++        log.append(note)
++        if current.empty and len(frame) > 0:
++            raise CleaningError("cleaning removed every row; nothing is left to analyse")
++    return CleanedView(
++        frame=current, log=tuple(log), rows_before=len(frame), rows_after=len(current)
++    )
++
++
++def cleaned_view(ingested: IngestedCSV, profile: DatasetProfile, plan: CleaningPlan) -> CleanedView:
++    """Typed frame from *ingested* with *plan* applied. The raw ingested frame is untouched."""
++    return apply_cleaning(plan, typed_frame(ingested, profile), profile)
+diff --git a/src/ai_data_analyst/analysis/operations.py b/src/ai_data_analyst/analysis/operations.py
+index b3d9cb2..68819c5 100644
+--- a/src/ai_data_analyst/analysis/operations.py
++++ b/src/ai_data_analyst/analysis/operations.py
+@@ -17,30 +17,51 @@ from typing import Any
+ import numpy as np
+ import pandas as pd
+ from pydantic import JsonValue
++from sklearn.cluster import KMeans
++from sklearn.decomposition import PCA
++from sklearn.metrics import silhouette_score
++from sklearn.preprocessing import StandardScaler
++from threadpoolctl import threadpool_limits
+ 
+ from ..models import DatasetProfile
+ from ..security import LimitsConfig
+ from .artifact import AnalysisArtifact, Provenance
++from .cleaning import CleanedView
+ from .plan import (
+     AnalysisPlan,
+     AnalysisStep,
++    ClusteringParams,
+     CorrelationParams,
+     DistributionParams,
+     GroupedAggregationParams,
+     OperationName,
+     OutlierSummaryParams,
++    PcaParams,
+     SummaryStatsParams,
+     step_columns,
+     validate_plan,
+ )
+ 
+ _DECIMALS = 6
++_SILHOUETTE_SAMPLE = 2_000
++_SCALE_RATIO_WARNING = 10.0
+ 
+ 
+ class ExecutionTimeError(RuntimeError):
+     """The plan exceeded ``max_execution_seconds`` between steps."""
+ 
+ 
++class OperationInputError(ValueError):
++    """The data cannot support the requested operation (too few rows, constant columns, ...).
++
++    Raised instead of returning a made-up result. ``step`` is the 0-based plan step, when known.
++    """
++
++    def __init__(self, message: str, step: int | None = None) -> None:
++        super().__init__(message if step is None else f"step {step}: {message}")
++        self.step = step
++
++
+ class OperationOutput:
+     """Result of one operation before it is wrapped into an artifact."""
+ 
+@@ -243,12 +264,164 @@ def _outlier_summary(frame: pd.DataFrame, params: OutlierSummaryParams) -> Opera
+     return OperationOutput(result, len(frame), warnings)
+ 
+ 
++def _complete_rows(
++    frame: pd.DataFrame, columns: tuple[str, ...]
++) -> tuple[np.ndarray[Any, np.dtype[np.float64]], list[str]]:
++    """Rows with no missing value in *columns* as a float matrix, plus warnings."""
++    subset = frame[list(columns)]
++    complete = subset.dropna()
++    warnings: list[str] = []
++    excluded = len(subset) - len(complete)
++    if excluded:
++        warnings.append(
++            f"{excluded} rows with a missing value in the selected columns were excluded"
++        )
++    matrix = complete.to_numpy(dtype=np.float64)
++    for position, name in enumerate(columns):
++        if matrix.shape[0] > 0 and np.ptp(matrix[:, position]) == 0:
++            warnings.append(f"{name}: all values are identical")
++    return matrix, warnings
++
++
++def _scale_warning(matrix: np.ndarray[Any, np.dtype[np.float64]]) -> list[str]:
++    """Warn when unscaled columns differ so much in spread that one will dominate."""
++    spreads = matrix.std(axis=0, ddof=1) if matrix.shape[0] > 1 else np.zeros(matrix.shape[1])
++    positive = spreads[spreads > 0]
++    if positive.size > 1 and positive.max() / positive.min() > _SCALE_RATIO_WARNING:
++        return [
++            "columns are on very different scales and were not standardized; "
++            "the largest-scale column will dominate the result"
++        ]
++    return []
++
++
++def _prepare(
++    matrix: np.ndarray[Any, np.dtype[np.float64]], standardize: bool
++) -> np.ndarray[Any, np.dtype[np.float64]]:
++    if not standardize:
++        return matrix
++    return np.asarray(StandardScaler().fit_transform(matrix), dtype=np.float64)
++
++
++def _clustering(frame: pd.DataFrame, params: ClusteringParams) -> OperationOutput:
++    original, warnings = _complete_rows(frame, params.columns)
++    rows = original.shape[0]
++    if rows < params.k:
++        raise OperationInputError(
++            f"clustering into k={params.k} needs at least {params.k} complete rows, found {rows}"
++        )
++    distinct = int(np.unique(original, axis=0).shape[0])
++    if distinct < params.k:
++        raise OperationInputError(
++            f"clustering into k={params.k} needs at least {params.k} distinct rows, "
++            f"found {distinct}"
++        )
++    if not params.standardize:
++        warnings.extend(_scale_warning(original))
++    data = _prepare(original, params.standardize)
++    with threadpool_limits(limits=1):  # one BLAS/OpenMP thread: identical results on any machine
++        model = KMeans(
++            n_clusters=params.k,
++            n_init=10,
++            max_iter=300,
++            algorithm="lloyd",
++            random_state=params.random_state,
++        ).fit(data)
++    labels = model.labels_.astype(np.int64)
++    sizes = np.bincount(labels, minlength=params.k)
++    centroids = np.vstack([original[labels == c].mean(axis=0) for c in range(params.k)])
++    # Number clusters by size (largest first); ties broken by centroid so labels are stable.
++    order = sorted(range(params.k), key=lambda c: (-int(sizes[c]), tuple(centroids[c])))
++    silhouette: float | None = None
++    if 1 < np.unique(labels).size < rows:  # silhouette is undefined for 1 cluster or k == rows
++        sampled = rows > _SILHOUETTE_SAMPLE
++        if sampled:
++            warnings.append(
++                f"silhouette was estimated on a random sample of {_SILHOUETTE_SAMPLE} rows"
++            )
++        with threadpool_limits(limits=1):
++            silhouette = _num(
++                silhouette_score(
++                    data,
++                    labels,
++                    sample_size=_SILHOUETTE_SAMPLE if sampled else None,
++                    random_state=params.random_state,
++                )
++            )
++    clusters: list[JsonValue] = [
++        {
++            "cluster": rank,
++            "size": int(sizes[c]),
++            "fraction": _num(sizes[c] / rows),
++            "centroid": {name: _num(centroids[c][i]) for i, name in enumerate(params.columns)},
++        }
++        for rank, c in enumerate(order)
++    ]
++    result: dict[str, JsonValue] = {
++        "k": params.k,
++        "columns": [*params.columns],
++        "standardized": params.standardize,
++        "random_state": params.random_state,
++        "rows_clustered": rows,
++        "inertia": _num(model.inertia_),
++        "inertia_space": "standardized" if params.standardize else "original",
++        "iterations": int(model.n_iter_),
++        "silhouette": silhouette,
++        "clusters": clusters,
++    }
++    return OperationOutput(result, rows, warnings)
++
++
++def _pca(frame: pd.DataFrame, params: PcaParams) -> OperationOutput:
++    original, warnings = _complete_rows(frame, params.columns)
++    rows = original.shape[0]
++    if rows < max(2, params.n_components):
++        raise OperationInputError(
++            f"PCA with {params.n_components} components needs at least "
++            f"{max(2, params.n_components)} complete rows, found {rows}"
++        )
++    if not (original.std(axis=0, ddof=1) > 0).any():
++        raise OperationInputError("every selected column is constant; PCA is undefined")
++    if not params.standardize:
++        warnings.extend(_scale_warning(original))
++    data = _prepare(original, params.standardize)
++    with threadpool_limits(limits=1):
++        model = PCA(n_components=params.n_components, svd_solver="full").fit(data)
++    loadings = np.array(model.components_, dtype=np.float64)
++    for row in loadings:  # components are defined up to sign; make the largest loading positive
++        if row[int(np.argmax(np.abs(row)))] < 0:
++            row *= -1
++    ratios = [float(r) for r in model.explained_variance_ratio_]
++    cumulative = np.cumsum(ratios)
++    components: list[JsonValue] = [
++        {
++            "component": f"PC{index + 1}",
++            "explained_variance": _num(model.explained_variance_[index]),
++            "explained_variance_ratio": _num(ratios[index]),
++            "cumulative_ratio": _num(cumulative[index]),
++            "loadings": {name: _num(loadings[index][i]) for i, name in enumerate(params.columns)},
++        }
++        for index in range(params.n_components)
++    ]
++    result: dict[str, JsonValue] = {
++        "columns": [*params.columns],
++        "standardized": params.standardize,
++        "n_components": params.n_components,
++        "rows_used": rows,
++        "total_variance": _num(data.var(axis=0, ddof=1).sum()),
++        "components": components,
++    }
++    return OperationOutput(result, rows, warnings)
++
++
+ OPERATIONS: dict[OperationName, Callable[[pd.DataFrame, Any], OperationOutput]] = {
+     "summary_stats": _summary_stats,
+     "grouped_aggregation": _grouped_aggregation,
+     "correlation": _correlation,
+     "distribution": _distribution,
+     "outlier_summary": _outlier_summary,
++    "clustering": _clustering,
++    "pca": _pca,
+ }
+ 
+ 
+@@ -257,9 +430,16 @@ def _library_versions() -> dict[str, str]:
+ 
+ 
+ def execute_step(
+-    step: AnalysisStep, frame: pd.DataFrame, profile: DatasetProfile
++    step: AnalysisStep,
++    frame: pd.DataFrame,
++    profile: DatasetProfile,
++    cleaning: tuple[str, ...] = (),
+ ) -> AnalysisArtifact:
+-    """Run one validated step on *frame* and wrap the result with provenance."""
++    """Run one validated step on *frame* and wrap the result with provenance.
++
++    *cleaning* is the log of cleaning steps already applied to *frame*; it is recorded in the
++    artifact's provenance.
++    """
+     function = OPERATIONS.get(step.operation)
+     if function is None:  # unreachable for validated plans; fail closed anyway
+         raise ValueError(f"operation {step.operation!r} is not allow-listed")
+@@ -275,30 +455,58 @@ def execute_step(
+             rows_in_dataset=len(frame),
+             rows_used=output.rows_used,
+             library_versions=_library_versions(),
++            cleaning=cleaning,
+         ),
+     )
+ 
+ 
+-def execute_plan(
++def _run_plan(
+     plan: AnalysisPlan,
+     frame: pd.DataFrame,
+     profile: DatasetProfile,
+-    limits: LimitsConfig | None = None,
++    limits: LimitsConfig | None,
++    expected_rows: int,
++    cleaning: tuple[str, ...],
+ ) -> tuple[AnalysisArtifact, ...]:
+-    """Validate the whole plan, then run every step. Nothing runs if validation fails.
+-
+-    The time limit is checked between steps (a single step is not interrupted).
+-    """
+     active = LimitsConfig() if limits is None else limits
+     validate_plan(plan, profile)
+-    if len(frame) != profile.row_count:
++    if len(frame) != expected_rows:
+         raise ValueError("frame does not match the profile (row count differs)")
+     deadline = time.monotonic() + active.max_execution_seconds
+     artifacts: list[AnalysisArtifact] = []
+-    for step in plan.steps:
++    for index, step in enumerate(plan.steps):
+         if time.monotonic() > deadline:
+             raise ExecutionTimeError(
+                 f"plan exceeded max_execution_seconds={active.max_execution_seconds}"
+             )
+-        artifacts.append(execute_step(step, frame, profile))
++        try:
++            artifacts.append(execute_step(step, frame, profile, cleaning))
++        except OperationInputError as error:
++            raise OperationInputError(str(error), step=index) from None
+     return tuple(artifacts)
++
++
++def execute_plan(
++    plan: AnalysisPlan,
++    frame: pd.DataFrame,
++    profile: DatasetProfile,
++    limits: LimitsConfig | None = None,
++) -> tuple[AnalysisArtifact, ...]:
++    """Validate the whole plan, then run every step. Nothing runs if validation fails.
++
++    The time limit is checked between steps (a single step is not interrupted). A step whose
++    data cannot support the operation raises :class:`OperationInputError` with its index.
++    """
++    return _run_plan(plan, frame, profile, limits, profile.row_count, ())
++
++
++def execute_plan_on_view(
++    plan: AnalysisPlan,
++    view: CleanedView,
++    profile: DatasetProfile,
++    limits: LimitsConfig | None = None,
++) -> tuple[AnalysisArtifact, ...]:
++    """Like :func:`execute_plan`, on a cleaned view; every artifact records the cleaning log."""
++    if view.rows_before != profile.row_count:
++        raise ValueError("cleaned view does not match the profile (row count differs)")
++    return _run_plan(plan, view.frame, profile, limits, view.rows_after, view.log)
+diff --git a/src/ai_data_analyst/analysis/plan.py b/src/ai_data_analyst/analysis/plan.py
+index 8d8e050..94ec220 100644
+--- a/src/ai_data_analyst/analysis/plan.py
++++ b/src/ai_data_analyst/analysis/plan.py
+@@ -14,7 +14,7 @@ from __future__ import annotations
+ 
+ from typing import Annotated, Final, Literal
+ 
+-from pydantic import BaseModel, ConfigDict, Field, field_validator
++from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+ 
+ from ..models import ColumnProfile, DatasetProfile
+ 
+@@ -26,12 +26,19 @@ OperationName = Literal[
+     "correlation",
+     "distribution",
+     "outlier_summary",
++    "clustering",
++    "pca",
+ ]
+ Aggregation = Literal["count", "mean", "median", "sum", "min", "max", "std"]
+ 
+ MAX_STEPS: Final = 20
+ MAX_COLUMNS_PER_STEP: Final = 50
+ MAX_GROUP_COLUMNS: Final = 3
++MAX_CLUSTERS: Final = 10
++MAX_CLUSTER_COLUMNS: Final = 10
++MAX_PCA_COLUMNS: Final = 20
++MAX_PCA_COMPONENTS: Final = 10
++MAX_RANDOM_STATE: Final = 2**31 - 1
+ 
+ _NUMERIC_TYPES: Final = frozenset({"integer", "float"})
+ _GROUPABLE_TYPES: Final = frozenset({"integer", "boolean", "date", "string"})
+@@ -105,12 +112,43 @@ class OutlierSummaryParams(_Params):
+     _no_repeats = field_validator("columns")(_unique)
+ 
+ 
++class ClusteringParams(_Params):
++    """K-means on numeric columns. Rows with a missing value in them are excluded."""
++
++    operation: Literal["clustering"] = "clustering"
++    columns: tuple[str, ...] = Field(min_length=2, max_length=MAX_CLUSTER_COLUMNS)
++    k: int = Field(ge=2, le=MAX_CLUSTERS, description="Number of clusters")
++    standardize: bool = Field(default=True, description="Scale columns to mean 0, std 1 first")
++    random_state: int = Field(default=0, ge=0, le=MAX_RANDOM_STATE, description="Fixed seed")
++
++    _no_repeats = field_validator("columns")(_unique)
++
++
++class PcaParams(_Params):
++    """Principal component analysis of numeric columns (rows with missing values excluded)."""
++
++    operation: Literal["pca"] = "pca"
++    columns: tuple[str, ...] = Field(min_length=2, max_length=MAX_PCA_COLUMNS)
++    n_components: int = Field(default=2, ge=1, le=MAX_PCA_COMPONENTS)
++    standardize: bool = Field(default=True, description="Scale columns to mean 0, std 1 first")
++
++    _no_repeats = field_validator("columns")(_unique)
++
++    @model_validator(mode="after")
++    def _components_fit_columns(self) -> PcaParams:
++        if self.n_components > len(self.columns):
++            raise ValueError("n_components must not exceed the number of columns")
++        return self
++
++
+ AnalysisStep = Annotated[
+     SummaryStatsParams
+     | GroupedAggregationParams
+     | CorrelationParams
+     | DistributionParams
+-    | OutlierSummaryParams,
++    | OutlierSummaryParams
++    | ClusteringParams
++    | PcaParams,
+     Field(discriminator="operation"),
+ ]
+ 
+@@ -134,7 +172,13 @@ class AnalysisPlan(BaseModel):
+ def step_columns(step: AnalysisStep) -> tuple[str, ...]:
+     """Every dataset column a step reads, in a stable order."""
+     match step:
+-        case SummaryStatsParams() | CorrelationParams() | OutlierSummaryParams():
++        case (
++            SummaryStatsParams()
++            | CorrelationParams()
++            | OutlierSummaryParams()
++            | ClusteringParams()
++            | PcaParams()
++        ):
+             return step.columns
+         case GroupedAggregationParams():
+             return (*step.group_by, step.value_column)
+@@ -163,6 +207,20 @@ def validate_step(step: AnalysisStep, profile: DatasetProfile, index: int = 0) -
+     match step:
+         case SummaryStatsParams() | CorrelationParams() | OutlierSummaryParams():
+             _require_numeric(profile, index, step.columns)
++        case ClusteringParams():
++            _require_numeric(profile, index, step.columns)
++            if step.k > profile.row_count:
++                raise PlanValidationError(
++                    index, f"k={step.k} exceeds the dataset's {profile.row_count} rows"
++                )
++        case PcaParams():
++            _require_numeric(profile, index, step.columns)
++            if step.n_components > profile.row_count:
++                raise PlanValidationError(
++                    index,
++                    f"n_components={step.n_components} exceeds the dataset's "
++                    f"{profile.row_count} rows",
++                )
+         case GroupedAggregationParams():
+             for name in step.group_by:
+                 kind = _lookup(profile, index, name).inferred_type
+diff --git a/tests/unit/test_analysis_ml.py b/tests/unit/test_analysis_ml.py
+new file mode 100644
+index 0000000..4013338
+--- /dev/null
++++ b/tests/unit/test_analysis_ml.py
+@@ -0,0 +1,360 @@
++"""Clustering and PCA (EDA-06): correctness against independent computations, edge cases,
++reproducibility and resource limits."""
++
++from __future__ import annotations
++
++import json
++import typing
++from pathlib import Path
++from typing import Any
++
++import numpy as np
++import pandas as pd
++import pytest
++from pydantic import ValidationError
++from threadpoolctl import threadpool_limits
++
++from ai_data_analyst.analysis import (
++    AnalysisArtifact,
++    AnalysisPlan,
++    ClusteringParams,
++    OperationInputError,
++    PcaParams,
++    PlanValidationError,
++    execute_plan,
++    typed_frame,
++    validate_plan,
++)
++from ai_data_analyst.ingestion import IngestedCSV, load_csv, load_csv_path
++from ai_data_analyst.models import DatasetProfile
++from ai_data_analyst.profiling import profile_ingested
++
++
++def _dataset(text: str) -> tuple[pd.DataFrame, DatasetProfile]:
++    ingested = load_csv(text.encode(), "d.csv")
++    profile = profile_ingested(ingested)
++    return typed_frame(ingested, profile), profile
++
++
++def _run(frame: pd.DataFrame, profile: DatasetProfile, *steps: Any) -> tuple[AnalysisArtifact, ...]:
++    return execute_plan(AnalysisPlan(steps=steps), frame, profile)
++
++
++def _blobs() -> str:
++    """Three tight, well-separated groups of 30, 20 and 10 points around known centres."""
++    rng = np.random.default_rng(7)
++    rows: list[tuple[float, float]] = []
++    for size, (cx, cy) in ((30, (0.0, 0.0)), (20, (50.0, 50.0)), (10, (100.0, 0.0))):
++        points = rng.normal(0.0, 0.5, size=(size, 2)) + (cx, cy)
++        rows.extend((round(float(x), 3), round(float(y), 3)) for x, y in points)
++    return "x,y\n" + "\n".join(f"{x},{y}" for x, y in rows) + "\n"
++
++
++@pytest.fixture(scope="module")
++def sample(sample_csv_path: Path) -> tuple[pd.DataFrame, DatasetProfile, IngestedCSV]:
++    ingested = load_csv_path(sample_csv_path)
++    profile = profile_ingested(ingested)
++    return typed_frame(ingested, profile), profile, ingested
++
++
++def _result(artifact: AnalysisArtifact) -> dict[str, Any]:
++    return typing.cast(dict[str, Any], artifact.result)
++
++
++# --- plan parameters and validation -----------------------------------------------------
++
++
++@pytest.mark.parametrize(
++    "build",
++    [
++        lambda: ClusteringParams(columns=("a", "b"), k=1),
++        lambda: ClusteringParams(columns=("a", "b"), k=11),
++        lambda: ClusteringParams(columns=("a",), k=2),
++        lambda: ClusteringParams(columns=("a", "a"), k=2),
++        lambda: ClusteringParams(columns=tuple("abcdefghijk"), k=2),
++        lambda: ClusteringParams(columns=("a", "b"), k=2, random_state=-1),
++        lambda: ClusteringParams(columns=("a", "b"), k=2, init="random"),  # type: ignore[call-arg]
++        lambda: PcaParams(columns=("a",)),
++        lambda: PcaParams(columns=("a", "b"), n_components=3),
++        lambda: PcaParams(columns=("a", "b"), n_components=0),
++        lambda: PcaParams(columns=("a", "a")),
++    ],
++)
++def test_invalid_ml_parameters_are_rejected(build: Any):
++    with pytest.raises(ValidationError):
++        build()
++
++
++def test_ml_steps_round_trip_through_json_and_reject_code_fields():
++    plan = AnalysisPlan(
++        steps=(ClusteringParams(columns=("a", "b"), k=3), PcaParams(columns=("a", "b")))
++    )
++    assert AnalysisPlan.model_validate_json(plan.model_dump_json()) == plan
++    with pytest.raises(ValidationError):
++        AnalysisPlan.model_validate(
++            {"steps": [{"operation": "clustering", "columns": ["a", "b"], "k": 2, "fn": "x"}]}
++        )
++
++
++@pytest.mark.parametrize(
++    ("step", "fragment"),
++    [
++        (ClusteringParams(columns=("demand_mwh", "nope"), k=2), "unknown column"),
++        (ClusteringParams(columns=("demand_mwh", "region"), k=2), "expected a numeric column"),
++        (ClusteringParams(columns=("demand_mwh", "temperature_c"), k=10), None),
++        (PcaParams(columns=("demand_mwh", "date")), "expected a numeric column"),
++        (PcaParams(columns=("demand_mwh", "holiday")), "expected a numeric column"),
++    ],
++)
++def test_validate_plan_checks_ml_columns(
++    sample: tuple[pd.DataFrame, DatasetProfile, IngestedCSV], step: Any, fragment: str | None
++):
++    _, profile, _ = sample
++    plan = AnalysisPlan(steps=(step,))
++    if fragment is None:
++        validate_plan(plan, profile)
++        return
++    with pytest.raises(PlanValidationError, match=fragment):
++        validate_plan(plan, profile)
++
++
++def test_validate_plan_rejects_more_clusters_than_rows():
++    _, profile = _dataset("a,b\n1,2\n3,4\n")
++    with pytest.raises(PlanValidationError, match="exceeds the dataset's 2 rows"):
++        validate_plan(AnalysisPlan(steps=(ClusteringParams(columns=("a", "b"), k=3),)), profile)
++
++
++# --- clustering correctness -------------------------------------------------------------
++
++
++def test_clustering_recovers_known_blobs():
++    frame, profile = _dataset(_blobs())
++    (artifact,) = _run(frame, profile, ClusteringParams(columns=("x", "y"), k=3))
++    result = _result(artifact)
++    clusters = result["clusters"]
++    assert [c["size"] for c in clusters] == [30, 20, 10]  # numbered largest first
++    assert [c["cluster"] for c in clusters] == [0, 1, 2]
++    for cluster, centre in zip(clusters, [(0, 0), (50, 50), (100, 0)], strict=True):
++        assert cluster["centroid"]["x"] == pytest.approx(centre[0], abs=0.6)
++        assert cluster["centroid"]["y"] == pytest.approx(centre[1], abs=0.6)
++    assert sum(c["fraction"] for c in clusters) == pytest.approx(1.0, abs=1e-5)
++    assert result["silhouette"] > 0.9
++    assert result["rows_clustered"] == 60
++    assert artifact.provenance.rows_used == 60
++
++
++def test_clustering_centroids_and_inertia_match_an_independent_computation(
++    sample: tuple[pd.DataFrame, DatasetProfile, IngestedCSV],
++):
++    frame, profile, _ = sample
++    (artifact,) = _run(
++        frame, profile, ClusteringParams(columns=("demand_mwh", "temperature_c"), k=3)
++    )
++    result = _result(artifact)
++    complete = frame[["demand_mwh", "temperature_c"]].dropna().to_numpy(dtype=float)
++    assert result["rows_clustered"] == len(complete) == 469
++    centroids = np.array(
++        [[c["centroid"]["demand_mwh"], c["centroid"]["temperature_c"]] for c in result["clusters"]]
++    )
++    # Every row belongs to its nearest centroid in standardised space: recompute inertia.
++    mean, std = complete.mean(axis=0), complete.std(axis=0)  # population std, like StandardScaler
++    z, zc = (complete - mean) / std, (centroids - mean) / std
++    distances = ((z[:, None, :] - zc[None, :, :]) ** 2).sum(axis=2)
++    assert distances.min(axis=1).sum() == pytest.approx(result["inertia"], rel=1e-4)
++    assert distances.argmin(axis=1).tolist().count(0) == result["clusters"][0]["size"]
++    sizes = [c["size"] for c in result["clusters"]]
++    assert sizes == sorted(sizes, reverse=True) and sum(sizes) == 469
++    assert any("16 rows with a missing value" in w for w in artifact.warnings)
++
++
++def test_clustering_is_reproducible_and_independent_of_thread_count():
++    frame, profile = _dataset(_blobs())
++    step = ClusteringParams(columns=("x", "y"), k=3, random_state=11)
++    first = _run(frame, profile, step)[0]
++    again = _run(frame, profile, step)[0]
++    with threadpool_limits(limits=4):
++        threaded = _run(frame, profile, step)[0]
++    assert first.result == again.result == threaded.result
++    assert first.parameters["random_state"] == 11
++
++
++def test_different_seeds_are_recorded_and_still_find_separated_groups():
++    frame, profile = _dataset(_blobs())
++    for seed in (0, 1, 2**31 - 1):
++        (artifact,) = _run(
++            frame, profile, ClusteringParams(columns=("x", "y"), k=3, random_state=seed)
++        )
++        assert [c["size"] for c in _result(artifact)["clusters"]] == [30, 20, 10]
++        assert artifact.parameters["random_state"] == seed
++
++
++def test_standardize_false_uses_original_units_and_warns_on_scale_mismatch():
++    csv = "small,large\n" + "\n".join(f"{i % 5},{1000 * (i % 7) + i}" for i in range(60)) + "\n"
++    frame, profile = _dataset(csv)
++    (artifact,) = _run(
++        frame, profile, ClusteringParams(columns=("small", "large"), k=2, standardize=False)
++    )
++    assert _result(artifact)["inertia_space"] == "original"
++    assert _result(artifact)["standardized"] is False
++    assert any("very different scales" in w for w in artifact.warnings)
++    (scaled,) = _run(frame, profile, ClusteringParams(columns=("small", "large"), k=2))
++    assert not any("very different scales" in w for w in scaled.warnings)
++
++
++def test_constant_column_is_reported_not_hidden():
++    frame, profile = _dataset("a,b\n" + "\n".join(f"{i},5" for i in range(20)) + "\n")
++    (artifact,) = _run(frame, profile, ClusteringParams(columns=("a", "b"), k=2))
++    assert "b: all values are identical" in artifact.warnings
++
++
++def test_clustering_fails_closed_when_data_cannot_support_k():
++    few, profile = _dataset("a,b\n1,1\n2,2\n3,\n4,\n")
++    with pytest.raises(OperationInputError, match="step 0: .*at least 3 complete rows, found 2"):
++        _run(few, profile, ClusteringParams(columns=("a", "b"), k=3))
++    same, profile = _dataset("a,b\n1,1\n1,1\n1,1\n2,2\n")
++    with pytest.raises(OperationInputError, match="at least 3 distinct rows, found 2"):
++        _run(same, profile, ClusteringParams(columns=("a", "b"), k=3))
++
++
++def test_a_failing_step_reports_its_index_and_returns_nothing():
++    frame, profile = _dataset("a,b\n1,1\n2,2\n3,\n")
++    steps = (
++        PcaParams(columns=("a", "b"), n_components=1),
++        ClusteringParams(columns=("a", "b"), k=3),
++    )
++    with pytest.raises(OperationInputError, match="^step 1: ") as raised:
++        _run(frame, profile, *steps)
++    assert raised.value.step == 1
++
++
++def test_one_row_per_cluster_has_no_silhouette():
++    frame, profile = _dataset("a,b\n1,1\n5,9\n")
++    (artifact,) = _run(frame, profile, ClusteringParams(columns=("a", "b"), k=2))
++    assert _result(artifact)["silhouette"] is None
++    assert [c["size"] for c in _result(artifact)["clusters"]] == [1, 1]
++
++
++def test_clustering_artifact_is_strict_json_with_provenance():
++    frame, profile = _dataset(_blobs())
++    (artifact,) = _run(frame, profile, ClusteringParams(columns=("x", "y"), k=2))
++    json.dumps(artifact.model_dump(mode="json"), allow_nan=False)
++    assert AnalysisArtifact.model_validate_json(artifact.model_dump_json()) == artifact
++    assert artifact.operation == "clustering"
++    assert artifact.input_columns == ("x", "y")
++    assert artifact.provenance.dataset_fingerprint == profile.dataset_fingerprint
++    assert "scikit-learn" in artifact.provenance.library_versions
++
++
++def test_ml_steps_respect_the_execution_time_limit_between_steps(
++    monkeypatch: pytest.MonkeyPatch,
++):
++    from ai_data_analyst.analysis import operations
++    from ai_data_analyst.security import LimitsConfig
++
++    frame, profile = _dataset(_blobs())
++    ticks = iter([0.0, 0.5, 100.0, 100.0, 100.0])  # deadline is 1s: the second step is too late
++    monkeypatch.setattr(operations.time, "monotonic", lambda: next(ticks))
++    plan = AnalysisPlan(
++        steps=(ClusteringParams(columns=("x", "y"), k=3), PcaParams(columns=("x", "y")))
++    )
++    with pytest.raises(operations.ExecutionTimeError):
++        execute_plan(plan, frame, profile, LimitsConfig(max_execution_seconds=1))
++
++
++def test_ml_parameter_bounds_cap_the_work_a_plan_can_request():
++    biggest = ClusteringParams(columns=tuple("abcdefghij"), k=10)
++    assert (len(biggest.columns), biggest.k) == (10, 10)
++    with pytest.raises(ValidationError):
++        ClusteringParams(columns=tuple("abcdefghijk"), k=10)
++    with pytest.raises(ValidationError):
++        PcaParams(columns=tuple("abcdefghijklmnopqrstu"), n_components=10)
++    with pytest.raises(ValidationError):
++        AnalysisPlan(steps=(biggest,) * 21)
++
++
++# --- PCA correctness --------------------------------------------------------------------
++
++
++def test_pca_matches_an_eigendecomposition_of_the_covariance_matrix(
++    sample: tuple[pd.DataFrame, DatasetProfile, IngestedCSV],
++):
++    frame, profile, _ = sample
++    names = ("demand_mwh", "temperature_c")
++    (artifact,) = _run(frame, profile, PcaParams(columns=names, n_components=2))
++    result = _result(artifact)
++    complete = frame[list(names)].dropna().to_numpy(dtype=float)
++    z = (complete - complete.mean(axis=0)) / complete.std(axis=0)
++    eigenvalues, eigenvectors = np.linalg.eigh(np.cov(z, rowvar=False))
++    order = np.argsort(eigenvalues)[::-1]
++    eigenvalues, eigenvectors = eigenvalues[order], eigenvectors[:, order]
++    for index, component in enumerate(result["components"]):
++        assert component["explained_variance"] == pytest.approx(eigenvalues[index], abs=1e-5)
++        assert component["explained_variance_ratio"] == pytest.approx(
++            eigenvalues[index] / eigenvalues.sum(), abs=1e-5
++        )
++        got = np.array([component["loadings"][n] for n in names])
++        assert np.abs(got) == pytest.approx(np.abs(eigenvectors[:, index]), abs=1e-5)
++    assert result["rows_used"] == 469
++    assert result["total_variance"] == pytest.approx(eigenvalues.sum(), abs=1e-5)
++    assert result["components"][-1]["cumulative_ratio"] == pytest.approx(1.0, abs=1e-5)
++
++
++def test_pca_loadings_are_orthonormal_with_a_fixed_sign_convention():
++    rng = np.random.default_rng(3)
++    base = rng.normal(size=200)
++    csv = "a,b,c\n" + "\n".join(
++        f"{x:.4f},{(2 * x + rng.normal(scale=0.3)):.4f},{rng.normal():.4f}" for x in base
++    )
++    frame, profile = _dataset(csv + "\n")
++    (artifact,) = _run(frame, profile, PcaParams(columns=("a", "b", "c"), n_components=3))
++    components = _result(artifact)["components"]
++    matrix = np.array([[c["loadings"][n] for n in "abc"] for c in components])
++    assert matrix @ matrix.T == pytest.approx(np.eye(3), abs=1e-4)
++    for row in matrix:  # the largest-magnitude loading of every component is positive
++        assert row[int(np.argmax(np.abs(row)))] > 0
++    ratios = [c["explained_variance_ratio"] for c in components]
++    assert ratios == sorted(ratios, reverse=True)
++    assert components[0]["explained_variance_ratio"] > 0.6
++
++
++def test_perfectly_correlated_columns_put_all_variance_in_one_component():
++    frame, profile = _dataset("x,y\n" + "\n".join(f"{i},{2 * i}" for i in range(30)) + "\n")
++    (artifact,) = _run(frame, profile, PcaParams(columns=("x", "y"), n_components=2))
++    first, second = _result(artifact)["components"]
++    assert first["explained_variance_ratio"] == pytest.approx(1.0, abs=1e-6)
++    assert second["explained_variance_ratio"] == pytest.approx(0.0, abs=1e-6)
++
++
++def test_pca_is_reproducible_and_artifact_is_strict_json():
++    frame, profile = _dataset(_blobs())
++    step = PcaParams(columns=("x", "y"))
++    first, second = _run(frame, profile, step)[0], _run(frame, profile, step)[0]
++    assert first.result == second.result
++    json.dumps(first.model_dump(mode="json"), allow_nan=False)
++    assert first.provenance.rows_used == 60
++
++
++def test_pca_standardize_false_warns_on_scale_mismatch_and_keeps_original_units():
++    csv = "small,large\n" + "\n".join(f"{i % 5},{1000 * (i % 7) + i}" for i in range(60)) + "\n"
++    frame, profile = _dataset(csv)
++    (artifact,) = _run(frame, profile, PcaParams(columns=("small", "large"), standardize=False))
++    assert any("very different scales" in w for w in artifact.warnings)
++    first = _result(artifact)["components"][0]
++    assert first["explained_variance_ratio"] > 0.99  # the large-scale column dominates
++    assert abs(first["loadings"]["large"]) > 0.99
++
++
++def test_pca_fails_closed_on_unusable_data():
++    frame, profile = _dataset("a,b\n1,2\n3,\n,4\n")
++    with pytest.raises(OperationInputError, match="needs at least 2 complete rows, found 1"):
++        _run(frame, profile, PcaParams(columns=("a", "b")))
++    frame, profile = _dataset("a,b\n1,5\n1,5\n1,5\n")
++    with pytest.raises(OperationInputError, match="every selected column is constant"):
++        _run(frame, profile, PcaParams(columns=("a", "b")))
++
++
++def test_pca_with_one_constant_column_still_runs_and_warns():
++    frame, profile = _dataset("a,b\n" + "\n".join(f"{i},7" for i in range(10)) + "\n")
++    (artifact,) = _run(frame, profile, PcaParams(columns=("a", "b"), n_components=1))
++    assert "b: all values are identical" in artifact.warnings
++    assert _result(artifact)["components"][0]["explained_variance_ratio"] == pytest.approx(1.0)
+diff --git a/tests/unit/test_cleaning.py b/tests/unit/test_cleaning.py
+new file mode 100644
+index 0000000..6818ddf
+--- /dev/null
++++ b/tests/unit/test_cleaning.py
+@@ -0,0 +1,268 @@
++"""EDA-04: the cleaning working view never modifies the ingested data and is fully logged."""
++
++from __future__ import annotations
++
++from pathlib import Path
++from typing import Any
++
++import numpy as np
++import pandas as pd
++import pytest
++from pydantic import ValidationError
++
++from ai_data_analyst.analysis import (
++    AnalysisPlan,
++    CleaningError,
++    CleaningPlan,
++    DropDuplicatesStep,
++    DropMissingRowsStep,
++    ImputeStep,
++    PlanValidationError,
++    SummaryStatsParams,
++    apply_cleaning,
++    cleaned_view,
++    execute_plan,
++    execute_plan_on_view,
++    typed_frame,
++)
++from ai_data_analyst.ingestion import IngestedCSV, load_csv, load_csv_path
++from ai_data_analyst.models import DatasetProfile
++from ai_data_analyst.profiling import profile_ingested
++
++
++@pytest.fixture(scope="module")
++def ingested(sample_csv_path: Path) -> IngestedCSV:
++    return load_csv_path(sample_csv_path)
++
++
++@pytest.fixture(scope="module")
++def profile(ingested: IngestedCSV) -> DatasetProfile:
++    return profile_ingested(ingested)
++
++
++def _plan(*steps: Any) -> CleaningPlan:
++    return CleaningPlan(steps=steps)
++
++
++# --- raw data is never touched ----------------------------------------------------------
++
++
++def test_cleaning_never_modifies_ingested_or_typed_data(
++    ingested: IngestedCSV, profile: DatasetProfile
++):
++    raw_before = ingested.frame.copy(deep=True)
++    typed = typed_frame(ingested, profile)
++    typed_before = typed.copy(deep=True)
++    plan = _plan(
++        DropDuplicatesStep(),
++        ImputeStep(column="temperature_c", strategy="median"),
++        DropMissingRowsStep(columns=("demand_mwh",)),
++    )
++    view = apply_cleaning(plan, typed, profile)
++    pd.testing.assert_frame_equal(ingested.frame, raw_before)
++    pd.testing.assert_frame_equal(typed, typed_before)
++    assert view.frame is not typed
++    assert len(view.frame) < len(typed)
++
++
++def test_an_empty_cleaning_plan_returns_an_equal_copy(
++    ingested: IngestedCSV, profile: DatasetProfile
++):
++    typed = typed_frame(ingested, profile)
++    view = apply_cleaning(CleaningPlan(), typed, profile)
++    pd.testing.assert_frame_equal(view.frame, typed)
++    assert view.frame is not typed
++    assert view.log == ()
++    assert view.rows_before == view.rows_after == profile.row_count
++
++
++# --- each step against independently known values --------------------------------------
++
++
++def test_drop_duplicates_removes_exactly_the_profiled_duplicates(
++    ingested: IngestedCSV, profile: DatasetProfile, expected_profile: dict[str, object]
++):
++    view = cleaned_view(ingested, profile, _plan(DropDuplicatesStep()))
++    assert expected_profile["duplicate_row_count"] == 5
++    assert view.rows_before - view.rows_after == 5
++    assert not view.frame.duplicated().any()
++    assert view.log == ("Removed 5 duplicate rows (kept the first occurrence)",)
++    # first occurrences are kept, in their original order
++    assert view.frame["record_id"].is_unique
++
++
++def test_drop_missing_rows_removes_rows_missing_any_listed_column(
++    ingested: IngestedCSV, profile: DatasetProfile
++):
++    typed = typed_frame(ingested, profile)
++    expected = int(typed[["demand_mwh", "temperature_c"]].isna().any(axis=1).sum())
++    view = apply_cleaning(
++        _plan(DropMissingRowsStep(columns=("demand_mwh", "temperature_c"))), typed, profile
++    )
++    assert view.rows_before - view.rows_after == expected > 0
++    assert not view.frame[["demand_mwh", "temperature_c"]].isna().any().any()
++    assert view.log == (
++        f"Removed {expected} rows with a missing value in: demand_mwh, temperature_c",
++    )
++
++
++@pytest.mark.parametrize("strategy", ["mean", "median"])
++def test_impute_fills_with_the_independently_computed_statistic(
++    ingested: IngestedCSV, profile: DatasetProfile, strategy: str
++):
++    raw = [float(v) for v in ingested.frame["temperature_c"] if v is not None]
++    fill = float(np.median(raw) if strategy == "median" else np.mean(raw))
++    view = cleaned_view(
++        ingested, profile, _plan(ImputeStep(column="temperature_c", strategy=strategy))
++    )  # type: ignore[arg-type]
++    column = view.frame["temperature_c"]
++    assert not column.isna().any()
++    assert view.rows_after == view.rows_before
++    original = typed_frame(ingested, profile)["temperature_c"]
++    assert (column[original.isna()] == fill).all()
++    pd.testing.assert_series_equal(column[original.notna()], original[original.notna()])
++    assert view.log == (
++        f"Filled 12 missing values in 'temperature_c' with the {strategy} ({round(fill, 6)})",
++    )
++
++
++def test_steps_apply_in_order_and_each_is_logged(ingested: IngestedCSV, profile: DatasetProfile):
++    view = cleaned_view(
++        ingested,
++        profile,
++        _plan(
++            DropDuplicatesStep(),
++            DropMissingRowsStep(columns=("demand_mwh",)),
++            ImputeStep(column="temperature_c", strategy="mean"),
++        ),
++    )
++    assert len(view.log) == 3
++    assert view.log[0].startswith("Removed 5 duplicate")
++    assert view.log[1].startswith("Removed ") and "demand_mwh" in view.log[1]
++    assert view.log[2].startswith("Filled ")
++    assert view.rows_after == len(view.frame)
++
++
++# --- plan shape and validation ----------------------------------------------------------
++
++
++@pytest.mark.parametrize(
++    "payload",
++    [
++        {"steps": [{"kind": "run", "code": "df.drop()"}]},
++        {"steps": [{"kind": "impute", "column": "a", "strategy": "mode"}]},
++        {"steps": [{"kind": "impute", "column": "a", "strategy": "mean", "value": 1}]},
++        {"steps": [{"kind": "drop_missing_rows", "columns": []}]},
++        {"steps": [{"kind": "drop_missing_rows", "columns": ["a", "a"]}]},
++        {"steps": [{"kind": "drop_duplicates"}] * 11},
++        {"schema_version": "9.9", "steps": []},
++        {"steps": [], "extra": 1},
++    ],
++)
++def test_cleaning_plan_rejects_malformed_input(payload: dict[str, Any]):
++    with pytest.raises(ValidationError):
++        CleaningPlan.model_validate(payload)
++
++
++def test_cleaning_plan_round_trips_through_json():
++    plan = _plan(DropDuplicatesStep(), ImputeStep(column="a", strategy="median"))
++    assert CleaningPlan.model_validate_json(plan.model_dump_json()) == plan
++
++
++@pytest.mark.parametrize(
++    ("step", "fragment"),
++    [
++        (DropMissingRowsStep(columns=("nope",)), "unknown column"),
++        (ImputeStep(column="nope", strategy="mean"), "unknown column"),
++        (ImputeStep(column="region", strategy="mean"), "not numeric"),
++        (ImputeStep(column="date", strategy="median"), "not numeric"),
++    ],
++)
++def test_invalid_cleaning_steps_are_rejected_before_anything_runs(
++    ingested: IngestedCSV, profile: DatasetProfile, step: Any, fragment: str
++):
++    with pytest.raises(PlanValidationError, match=fragment) as raised:
++        cleaned_view(ingested, profile, _plan(DropDuplicatesStep(), step))
++    assert raised.value.step == 1
++
++
++def test_imputing_a_column_with_no_values_fails_closed():
++    ingested = load_csv(b"a,b\n1,\n2,\n", "d.csv")
++    profile = profile_ingested(ingested)  # b is an all-missing string column
++    with pytest.raises(PlanValidationError, match="not numeric"):
++        cleaned_view(ingested, profile, _plan(ImputeStep(column="b", strategy="mean")))
++    ingested = load_csv(b"a,b\n1,2\n2,3\n", "d.csv")
++    profile = profile_ingested(ingested)
++    frame = typed_frame(ingested, profile)
++    emptied = _plan(
++        DropMissingRowsStep(columns=("a",)),  # keeps everything
++        ImputeStep(column="b", strategy="mean"),
++    )
++    assert apply_cleaning(emptied, frame, profile).rows_after == 2
++    frame["b"] = np.nan  # an all-missing numeric column after earlier steps
++    with pytest.raises(CleaningError, match="no non-missing values"):
++        apply_cleaning(_plan(ImputeStep(column="b", strategy="mean")), frame, profile)
++
++
++def test_cleaning_that_removes_every_row_fails_closed():
++    ingested = load_csv(b"a,b\n1,\n2,\n", "d.csv")
++    profile = profile_ingested(ingested)
++    with pytest.raises(CleaningError, match="removed every row"):
++        cleaned_view(ingested, profile, _plan(DropMissingRowsStep(columns=("b",))))
++
++
++# --- integration with execution and provenance ------------------------------------------
++
++
++def test_artifacts_from_a_cleaned_view_record_the_cleaning_log(
++    ingested: IngestedCSV, profile: DatasetProfile
++):
++    view = cleaned_view(
++        ingested,
++        profile,
++        _plan(DropDuplicatesStep(), DropMissingRowsStep(columns=("demand_mwh",))),
++    )
++    plan = AnalysisPlan(steps=(SummaryStatsParams(columns=("demand_mwh",)),))
++    (artifact,) = execute_plan_on_view(plan, view, profile)
++    assert artifact.provenance.cleaning == view.log
++    assert artifact.provenance.rows_in_dataset == view.rows_after
++    assert artifact.result["columns"]["demand_mwh"]["count"] == view.rows_after  # type: ignore[index]
++    assert artifact.result["columns"]["demand_mwh"]["missing"] == 0  # type: ignore[index]
++
++
++def test_default_execution_is_unchanged_and_records_no_cleaning(
++    ingested: IngestedCSV, profile: DatasetProfile
++):
++    plan = AnalysisPlan(steps=(SummaryStatsParams(columns=("demand_mwh",)),))
++    (artifact,) = execute_plan(plan, typed_frame(ingested, profile), profile)
++    assert artifact.provenance.cleaning == ()
++    assert artifact.provenance.rows_in_dataset == profile.row_count
++    assert artifact.result["columns"]["demand_mwh"]["missing"] == 4  # type: ignore[index]
++
++
++def test_cleaning_changes_the_computed_statistic_as_expected(
++    ingested: IngestedCSV, profile: DatasetProfile
++):
++    plan = AnalysisPlan(steps=(SummaryStatsParams(columns=("temperature_c",)),))
++    (raw,) = execute_plan(plan, typed_frame(ingested, profile), profile)
++    view = cleaned_view(
++        ingested, profile, _plan(ImputeStep(column="temperature_c", strategy="mean"))
++    )
++    (filled,) = execute_plan_on_view(plan, view, profile)
++    before = raw.result["columns"]["temperature_c"]  # type: ignore[index]
++    after = filled.result["columns"]["temperature_c"]  # type: ignore[index]
++    assert after["count"] == before["count"] + 12 and after["missing"] == 0
++    assert after["mean"] == pytest.approx(
++        before["mean"], abs=1e-5
++    )  # mean imputation keeps the mean
++    assert after["std"] < before["std"]  # ...and shrinks the spread
++
++
++def test_execute_plan_on_view_rejects_a_view_from_another_dataset(
++    ingested: IngestedCSV, profile: DatasetProfile
++):
++    other = load_csv(b"demand_mwh\n1\n2\n", "d.csv")
++    other_view = cleaned_view(other, profile_ingested(other), CleaningPlan())
++    plan = AnalysisPlan(steps=(SummaryStatsParams(columns=("demand_mwh",)),))
++    with pytest.raises(ValueError, match="row count differs"):
++        execute_plan_on_view(plan, other_view, profile)
+-- 
+2.43.0
+

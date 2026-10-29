@@ -18,6 +18,7 @@ dependencies = [
   "numpy>=1.26",
   "scipy>=1.13",
   "scikit-learn>=1.5",
+  "threadpoolctl>=3.1",
   "pydantic>=2.8",
   "sqlalchemy>=2.0",
   "sqlglot>=25.0",
@@ -33,6 +34,10 @@ dev = [
   "pytest-cov>=5.0",
   "ruff>=0.6",
   "mypy>=1.11",
+  "pandas-stubs>=2.2",
+  "google-genai>=1.0",
+  "ollama>=0.4",
+  "python-dotenv>=1.0",
 ]
 gemini = [
   "google-genai>=1.0",
@@ -48,6 +53,9 @@ where = ["src"]
 [tool.pytest.ini_options]
 pythonpath = ["src"]
 testpaths = ["tests"]
+markers = [
+  "integration: needs external services (for example a local Ollama server); skipped when unavailable",
+]
 
 [tool.ruff]
 line-length = 100
@@ -61,3 +69,8 @@ python_version = "3.11"
 strict = true
 plugins = ["pydantic.mypy"]
 files = ["src"]
+
+# scikit-learn and threadpoolctl ship no type information; treat them as untyped imports.
+[[tool.mypy.overrides]]
+module = ["sklearn", "sklearn.*", "threadpoolctl"]
+ignore_missing_imports = true

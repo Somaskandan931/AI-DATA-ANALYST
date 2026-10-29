@@ -4,7 +4,7 @@ An AI-assisted analytics platform combining deterministic Auto-EDA for CSV files
 
 ## Project status
 
-**Stage:** P0 complete (foundation). **Next:** P1, CSV ingestion and profiling.
+**Stage:** P2 analysis core implemented in `analysis/` and `visualization/` (operations incl. clustering and PCA, cleaning view, chart specs); row filters, reporting and chat still to come.
 **Tier:** T2
 **Collaborators:** Somaskandan, Nishi, Prathin
 
@@ -41,7 +41,7 @@ Windows (PowerShell):
 python -m venv .venv
 .\.venv\Scripts\Activate.ps1
 python -m pip install --upgrade pip
-pip install -e ".[app,dev]"
+pip install -e ".[app,dev,gemini,ollama]"
 python -m pytest -q
 streamlit run app.py
 ```
@@ -52,7 +52,7 @@ macOS / Linux:
 python -m venv .venv
 source .venv/bin/activate
 python -m pip install --upgrade pip
-pip install -e ".[app,dev]"
+pip install -e ".[app,dev,gemini,ollama]"
 python -m pytest -q
 streamlit run app.py
 ```
