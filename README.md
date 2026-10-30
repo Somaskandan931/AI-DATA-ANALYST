@@ -4,11 +4,11 @@ An AI-assisted analytics platform combining deterministic Auto-EDA for CSV files
 
 ## Project status
 
-**Stage:** P2 analysis core in `analysis/` and `visualization/`, report assembly in `reporting/` (HTML and Markdown), grounded chat in `chat/` and the Auto-EDA Streamlit workspace in `ui/`; row filters (proposed contract, awaiting review) and the SQL Analyst workspace still to come.
+**Stage:** P2 analysis core in `analysis/` and `visualization/`, report assembly in `reporting/` (HTML and Markdown), grounded chat in `chat/` and the Auto-EDA Streamlit workspace in `ui/`; row filters (first implementation, being aligned with the contract in `docs/FILTERS.md`) and the SQL Analyst workspace still to come.
 **Tier:** T2
 **Collaborators:** Somaskandan, Nishi, Prathin
 
-The repository contains the Auto-EDA modules (ingestion, profiling, analysis, charts, reports, grounded chat and a Streamlit workspace), the SQL agent pipeline (generation, validation, read-only execution), shared security primitives, and a fixed, independently verified sample dataset. The Auto-EDA evaluation runner (`scripts/run_auto_eda_eval.py`) records its results in `results/auto_eda_evaluation.json`; see `docs/EVALUATION.md` for method and limits. Row filters exist as a proposal (`FilterRowsStep`, see `docs/ARCHITECTURE.md`) pending review. Not yet done: the SQL Analyst workspace, audit events in the SQL pipeline, and any SQL accuracy or latency measurement.
+The repository contains the Auto-EDA modules (ingestion, profiling, analysis, charts, reports, grounded chat and a Streamlit workspace), the SQL agent pipeline (generation, validation, read-only execution), shared security primitives, and a fixed, independently verified sample dataset. The Auto-EDA evaluation runner (`scripts/run_auto_eda_eval.py`) records its results in `results/auto_eda_evaluation.json`; see `docs/EVALUATION.md` for method and limits. Row filters have a first implementation (`FilterRowsStep`) that is being aligned with the contract in `docs/FILTERS.md`. Not yet done: the SQL Analyst workspace, audit events in the SQL pipeline, and any SQL accuracy or latency measurement.
 
 ## Product modules
 
@@ -59,11 +59,42 @@ streamlit run app.py
 
 If PowerShell blocks virtual-environment activation, use the PyCharm terminal configured for the project's interpreter.
 
-Quality checks (also run in CI): `ruff check .`, `ruff format --check .`, `mypy`, `python -m pytest`.
+CI runs `ruff check .`, `ruff format --check .`, `mypy` and `python -m pytest` on Python 3.11 and 3.12, installing `.[app,dev]`. Run the same four commands before pushing.
+
+### Minimum-version check
+
+The lower bounds in `pyproject.toml` are verified, not assumed. To reproduce the check in a
+fresh environment with the oldest allowed versions:
+
+```bash
+python -m venv .venv-min
+source .venv-min/bin/activate          # Windows: .\.venv-min\Scripts\Activate.ps1
+pip install -e ".[app,dev,gemini,ollama]" -c constraints-min.txt
+python -m pytest -q && ruff check . && ruff format --check . && mypy
+```
+
+Verified on Python 3.12 with pandas 2.2.0, NumPy 1.26.0, SciPy 1.13.0, scikit-learn 1.5.0,
+sqlglot 30.13.0 and Streamlit 1.38.0 (full list in `constraints-min.txt`): all four checks pass.
+
+- **sqlglot >= 30.13.** The validator uses `exp.Expr` (added in 30.0.0), and releases before 30.13
+  wrongly deny valid queries whose string literals contain a semicolon. Both failures reject the
+  query, but they are still failures.
+- **NumPy 1.x needs an older pyarrow.** Streamlit pulls in pyarrow, and the newest pyarrow requires
+  NumPy 2. In an environment that pins NumPy below 2, install an older pyarrow (the constraints
+  file uses 17.0.0) or the Streamlit workspace fails to start.
+- **Development tool floors** (Ruff 0.13, mypy 1.13, pandas-stubs 3.0, google-genai 1.20,
+  ollama 0.4.7, markdown 3.4) exist because older releases flag rules that were later removed, fail
+  to type-check the pandas annotations, ship no typing marker, pin conflicting `httpx` ranges, or
+  fail the report tests. They affect linting, type checking and tests, not runtime behaviour.
 
 ## Sample data
 
 `data/sample/electricity_demand.csv` is a synthetic, seeded dataset with planted missing values, duplicates, and outliers. Its expected profile in `data/expected/` is computed independently with the standard library and cross-checked against pandas in the tests. Regenerate with `python scripts/generate_fixture.py`; output must be byte-identical.
+
+## Known limitations
+
+- `max_execution_seconds` is checked between plan steps, not inside them. A single slow step can
+  run past the limit, and the plan is stopped at the next step boundary.
 
 ## Documentation
 
