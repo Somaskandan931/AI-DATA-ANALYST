@@ -1,5 +1,14 @@
-"""Evaluation primitives: typed metrics and profile comparison."""
+"""Evaluation primitives: benchmarks, typed metrics and result comparison."""
 
+from ai_data_analyst.evaluation.benchmark import (
+    REQUIRED_CATEGORIES,
+    BenchmarkCase,
+    BenchmarkSuite,
+    Scalar,
+    category_counts,
+    load_benchmark,
+    missing_categories,
+)
 from ai_data_analyst.evaluation.comparison import (
     ProfileComparisonResult,
     ProfileMismatch,
@@ -17,9 +26,17 @@ from ai_data_analyst.evaluation.report import (
     summarize_latency,
 )
 from ai_data_analyst.evaluation.results import EvaluationResult
+from ai_data_analyst.evaluation.resultset import (
+    ResultSetCode,
+    ResultSetComparison,
+    ResultSetRules,
+    compare_result_sets,
+)
 
 __all__ = [
-    "REPORT_SCHEMA_VERSION",
+    "REQUIRED_CATEGORIES",
+    "BenchmarkCase",
+    "BenchmarkSuite",
     "CaseFailure",
     "DatasetInfo",
     "EvaluationReport",
@@ -27,9 +44,18 @@ __all__ = [
     "LatencySummary",
     "ProfileComparisonResult",
     "ProfileMismatch",
+    "REPORT_SCHEMA_VERSION",
+    "ResultSetCode",
+    "ResultSetComparison",
+    "ResultSetRules",
+    "Scalar",
     "Tolerances",
+    "category_counts",
     "compare_profiles",
+    "compare_result_sets",
     "library_versions",
+    "load_benchmark",
+    "missing_categories",
     "ratio_result",
     "summarize_latency",
 ]
