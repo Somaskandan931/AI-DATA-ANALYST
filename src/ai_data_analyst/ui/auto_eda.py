@@ -26,6 +26,7 @@ from ..analysis import (
     DropDuplicatesStep,
     DropMissingRowsStep,
     ExecutionTimeError,
+    FilterRowsStep,
     GroupedAggregationParams,
     ImputeStep,
     OperationInputError,
@@ -47,6 +48,7 @@ _UPLOAD_KEY = "auto_eda_upload_id"
 _AUDIT_KEY = "auto_eda_audit"
 _NUMERIC = ("integer", "float")
 _GROUPABLE = ("integer", "boolean", "date", "string")
+_FILTER_ROWS = 3
 _AGGREGATIONS = ("count", "mean", "median", "sum", "min", "max", "std")
 _EXPECTED = (
     IngestionError,
@@ -138,18 +140,50 @@ def _cleaning_tab(workspace: Workspace) -> None:
     drop_missing = st.multiselect("Remove rows with a missing value in", all_columns)
     impute = st.multiselect("Fill missing values in numeric columns", _columns(workspace, _NUMERIC))
     strategy = st.radio("Fill with", ("mean", "median"), horizontal=True)
+    st.caption(
+        "Keep only rows that match all of these conditions (leave Column empty to skip a row). "
+        'Filters run first. A row with a missing value matches only "is missing".'
+    )
+    rows: list[tuple[str, str, str]] = []
+    for index in range(_FILTER_ROWS):
+        a, b, c = st.columns([2, 2, 3])
+        column = a.selectbox(
+            "Filter column",
+            ["", *all_columns],
+            key=f"filter_column_{index}",
+            label_visibility="collapsed",
+        )
+        operator = b.selectbox(
+            "Filter operator",
+            list(ws_api.FILTER_OPERATORS),
+            key=f"filter_operator_{index}",
+            label_visibility="collapsed",
+        )
+        text = c.text_input(
+            "Filter value",
+            key=f"filter_value_{index}",
+            label_visibility="collapsed",
+            placeholder="value (dates as YYYY-MM-DD)",
+        )
+        rows.append((column, operator, text))
     left, right = st.columns(2)
     if left.button("Apply cleaning"):
-        steps: list[CleaningStep] = []
-        if drop_duplicates:
-            steps.append(DropDuplicatesStep())
-        if drop_missing:
-            steps.append(DropMissingRowsStep(columns=tuple(drop_missing)))
-        steps.extend(ImputeStep(column=name, strategy=strategy) for name in impute)
-        plan = CleaningPlan(steps=tuple(steps))
 
         def apply() -> bool:
-            ws_api.set_cleaning(workspace, plan)
+            steps: list[CleaningStep] = []
+            conditions = tuple(
+                ws_api.parse_filter_condition(workspace.profile, column, operator, text)
+                for column, operator, text in rows
+                if column
+            )
+            if conditions:
+                steps.append(FilterRowsStep(conditions=conditions))
+            if drop_duplicates:
+                steps.append(DropDuplicatesStep())
+            if drop_missing:
+                steps.append(DropMissingRowsStep(columns=tuple(drop_missing)))
+            steps.extend(ImputeStep(column=name, strategy=strategy) for name in impute)
+            ws_api.set_cleaning(workspace, CleaningPlan(steps=tuple(steps)))
             return True
 
         if _guard(apply):  # on failure keep the page so the error stays visible

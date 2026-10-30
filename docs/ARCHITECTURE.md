@@ -173,7 +173,32 @@ report download (HTML and Markdown). `app.py` mounts it as the Auto-EDA workspac
 cleaning plan discards computed artifacts, so every artifact in a session describes the same
 view of the data.
 
+### Row filters (proposed contract, pending review by the contracts owner)
+
+A row filter is a `FilterRowsStep` in the existing `CleaningPlan`, so it reuses the cleaned-view
+path: the log travels in every artifact's `Provenance.cleaning`, reports list it, and chat
+computes on the filtered rows. It is declarative only; no expression is parsed or evaluated.
+
+- **Shape.** `FilterRowsStep(conditions)` with 1 to 10 `FilterCondition(column, op, value)`,
+  combined with AND. `op` is one of `eq ne lt le gt ge in not_in is_missing is_not_missing`.
+  `in`/`not_in` take 1 to 50 values; `is_missing` ops take none; strings are at most 200
+  characters; floats must be finite.
+- **Typing.** Values must fit the column's profiled type: numbers for integer/float (not
+  booleans), `true`/`false` for boolean, `YYYY-MM-DD` for date, text for string. Ordering
+  operators (`lt le gt ge`) apply to integer, float and date columns only. Strings compare
+  exactly (case-sensitive).
+- **Missing values.** A row with a missing value in the column satisfies only `is_missing`;
+  every other operator, including `ne` and `not_in`, is false for it.
+- **Fail closed.** Unknown column, wrong value type, or a plan that leaves no rows raises
+  (`PlanValidationError` / `CleaningError`); the workspace is unchanged. Filters run in plan
+  order; the UI puts them first so imputation uses the kept rows.
+- **Chat.** Questions that ask for a filter in words ("how many rows have holiday yes?") are
+  still refused. While a cleaning view is active, profile answers (which describe the file as
+  uploaded) carry a warning saying so, with the cleaning log.
+- **Open for the contracts owner.** Whether the step belongs in `CleaningPlan` or in
+  `AnalysisPlan`; OR and NOT between conditions (not supported); whether SQL needs a matching
+  type. Until agreed, treat this as M1-internal.
+
 ### Not yet implemented
 
-Row filters are deliberately absent until the filter contract is agreed with the contracts
-owner. The SQL Analyst workspace belongs to M2.
+The SQL Analyst workspace belongs to M2.
