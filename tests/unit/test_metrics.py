@@ -1,7 +1,13 @@
+import numpy as np
 import pytest
 from pydantic import ValidationError
 
-from ai_data_analyst.evaluation.metrics import PhaseLatency, summarize_phase_latency
+from ai_data_analyst.evaluation.metrics import (
+    PhaseLatency,
+    _percentile,
+    linear_percentile,
+    summarize_phase_latency,
+)
 
 
 def test_empty_samples_have_a_zero_count_and_no_values():
@@ -75,3 +81,94 @@ def test_summary_json_round_trip():
     summary = summarize_phase_latency([1.0, 2.0, 3.0])
 
     assert PhaseLatency.model_validate_json(summary.model_dump_json()) == summary
+
+
+def test_public_names_are_exported():
+    import ai_data_analyst.evaluation.metrics as metrics
+
+    assert set(metrics.__all__) == {
+        "PhaseLatency",
+        "linear_percentile",
+        "summarize_phase_latency",
+    }
+
+
+def test_linear_percentile_hand_computed():
+    assert linear_percentile([1.0, 2.0, 3.0, 4.0], 50) == pytest.approx(2.5)
+    assert linear_percentile([1.0, 2.0, 3.0, 4.0], 95) == pytest.approx(3.85)
+    assert linear_percentile([1.0, 2.0], 95) == pytest.approx(1.95)
+
+
+def test_linear_percentile_endpoints_are_min_and_max():
+    assert linear_percentile([3.0, 1.0, 2.0], 0) == 1.0
+    assert linear_percentile([3.0, 1.0, 2.0], 100) == 3.0
+
+
+@pytest.mark.parametrize("percent", [0.0, 37.5, 100.0])
+def test_linear_percentile_single_sample(percent: float):
+    assert linear_percentile([7.0], percent) == 7.0
+
+
+def test_linear_percentile_ignores_order_and_does_not_mutate():
+    values = [4.0, 1.0, 3.0, 2.0]
+
+    assert linear_percentile(values, 50) == linear_percentile([1.0, 2.0, 3.0, 4.0], 50)
+    assert values == [4.0, 1.0, 3.0, 2.0]
+
+
+@pytest.mark.parametrize("seed", range(5))
+@pytest.mark.parametrize("size", [1, 2, 3, 7, 50])
+@pytest.mark.parametrize("percent", [0.0, 5.0, 50.0, 95.0, 100.0])
+def test_linear_percentile_matches_numpy(seed: int, size: int, percent: float):
+    data = np.random.default_rng(seed).random(size) * 1000
+    expected = float(np.percentile(data, percent, method="linear"))
+
+    assert linear_percentile([float(value) for value in data], percent) == pytest.approx(
+        expected, abs=1e-9
+    )
+
+
+@pytest.mark.parametrize(
+    "values",
+    [[], [1.0, float("nan")], [1.0, float("inf")], [1.0, float("-inf")]],
+)
+def test_linear_percentile_rejects_bad_values(values: list[float]):
+    with pytest.raises(ValueError):
+        linear_percentile(values, 50)
+
+
+@pytest.mark.parametrize("percent", [-1.0, 100.1, float("nan"), float("inf")])
+def test_linear_percentile_rejects_bad_percent(percent: float):
+    with pytest.raises(ValueError):
+        linear_percentile([1.0, 2.0], percent)
+
+
+@pytest.mark.parametrize("fraction", [1.5, -0.5])
+def test_percentile_rejects_fraction_outside_unit_interval(fraction: float):
+    with pytest.raises(ValueError):
+        _percentile([1.0, 2.0, 3.0], fraction)
+
+
+@pytest.mark.parametrize(
+    ("values", "percent", "expected"),
+    [
+        ([1, 2, 3], 50, 2.0),
+        ([7], 10, 7.0),
+        ([1, 2, 3], 0, 1.0),
+        ([1, 2, 3], 100, 3.0),
+    ],
+)
+def test_linear_percentile_returns_float_for_int_input(
+    values: list[int], percent: float, expected: float
+):
+    result = linear_percentile(values, percent)
+
+    assert isinstance(result, float)
+    assert result == expected
+
+
+def test_linear_percentile_returns_float_for_float_input():
+    result = linear_percentile([1.0, 2.0], 95)
+
+    assert isinstance(result, float)
+    assert result == pytest.approx(1.95)
