@@ -147,3 +147,28 @@ def test_linear_percentile_rejects_bad_percent(percent: float):
 def test_percentile_rejects_fraction_outside_unit_interval(fraction: float):
     with pytest.raises(ValueError):
         _percentile([1.0, 2.0, 3.0], fraction)
+
+
+@pytest.mark.parametrize(
+    ("values", "percent", "expected"),
+    [
+        ([1, 2, 3], 50, 2.0),
+        ([7], 10, 7.0),
+        ([1, 2, 3], 0, 1.0),
+        ([1, 2, 3], 100, 3.0),
+    ],
+)
+def test_linear_percentile_returns_float_for_int_input(
+    values: list[int], percent: float, expected: float
+):
+    result = linear_percentile(values, percent)
+
+    assert isinstance(result, float)
+    assert result == expected
+
+
+def test_linear_percentile_returns_float_for_float_input():
+    result = linear_percentile([1.0, 2.0], 95)
+
+    assert isinstance(result, float)
+    assert result == pytest.approx(1.95)

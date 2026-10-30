@@ -66,7 +66,14 @@ def summarize_phase_latency(values_ms: Sequence[float]) -> PhaseLatency:
 
 
 def linear_percentile(values: Sequence[float], percent: float) -> float:
-    """The *percent* percentile (0..100) of *values*, using linear interpolation."""
+    """Return the *percent* percentile (0..100) of *values*.
+
+    Percent is a number in 0..100, not a fraction. Values are interpolated
+    linearly between the closest ranks, matching ``numpy.percentile`` with
+    ``method="linear"``. Empty input, non-finite values, and a non-finite or
+    out-of-range percent raise ``ValueError``. Negative finite values are
+    accepted; unlike :func:`summarize_phase_latency`, they are not rejected.
+    """
     if not values:
         raise ValueError("at least one value is required")
     for value in values:
@@ -74,7 +81,7 @@ def linear_percentile(values: Sequence[float], percent: float) -> float:
             raise ValueError("percentile values must be finite")
     if not math.isfinite(percent) or not 0 <= percent <= 100:
         raise ValueError("percent must be finite and between 0 and 100")
-    return _percentile(sorted(values), percent / 100)
+    return float(_percentile(sorted(values), percent / 100))
 
 
 def _percentile(ordered: Sequence[float], fraction: float) -> float:
