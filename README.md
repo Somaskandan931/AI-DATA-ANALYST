@@ -4,11 +4,11 @@ An AI-assisted analytics platform combining deterministic Auto-EDA for CSV files
 
 ## Project status
 
-**Stage:** P2 analysis core in `analysis/` and `visualization/`, report assembly in `reporting/` (HTML and Markdown), grounded chat in `chat/` and the Auto-EDA Streamlit workspace in `ui/`; row filters (waiting on the filter contract) and the SQL Analyst workspace still to come.
+**Stage:** P2 analysis core in `analysis/` and `visualization/`, report assembly in `reporting/` (HTML and Markdown), grounded chat in `chat/` and the Auto-EDA Streamlit workspace in `ui/`; row filters (proposed contract, awaiting review) and the SQL Analyst workspace still to come.
 **Tier:** T2
 **Collaborators:** Somaskandan, Nishi, Prathin
 
-The repository contains the Auto-EDA modules (ingestion, profiling, analysis, charts, reports, grounded chat and a Streamlit workspace), the SQL agent pipeline (generation, validation, read-only execution), shared security primitives, and a fixed, independently verified sample dataset. The Auto-EDA evaluation runner (`scripts/run_auto_eda_eval.py`) records its results in `results/auto_eda_evaluation.json`; see `docs/EVALUATION.md` for method and limits. Not yet done: row filters, the SQL Analyst workspace, audit events in the SQL pipeline, and any SQL accuracy or latency measurement.
+The repository contains the Auto-EDA modules (ingestion, profiling, analysis, charts, reports, grounded chat and a Streamlit workspace), the SQL agent pipeline (generation, validation, read-only execution), shared security primitives, and a fixed, independently verified sample dataset. The Auto-EDA evaluation runner (`scripts/run_auto_eda_eval.py`) records its results in `results/auto_eda_evaluation.json`; see `docs/EVALUATION.md` for method and limits. Row filters exist as a proposal (`FilterRowsStep`, see `docs/ARCHITECTURE.md`) pending review. Not yet done: the SQL Analyst workspace, audit events in the SQL pipeline, and any SQL accuracy or latency measurement.
 
 ## Product modules
 

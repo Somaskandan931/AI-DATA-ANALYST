@@ -9,6 +9,7 @@ view of the data; changing the cleaning plan therefore discards them.
 from __future__ import annotations
 
 import contextlib
+import math
 import time
 from collections.abc import Callable
 from dataclasses import dataclass, field
@@ -24,6 +25,8 @@ from ..analysis import (
     CleanedView,
     CleaningPlan,
     ExecutionTimeError,
+    FilterCondition,
+    FilterOp,
     OperationInputError,
     PlanValidationError,
     cleaned_view,
@@ -51,6 +54,18 @@ from ..visualization import ChartSpec, charts_for_artifacts
 
 MAX_ARTIFACTS = 20  # the report and plan types allow at most 20 steps
 MAX_HISTORY = 50
+FILTER_OPERATORS: dict[str, FilterOp] = {
+    "equals": "eq",
+    "does not equal": "ne",
+    "is less than": "lt",
+    "is at most": "le",
+    "is greater than": "gt",
+    "is at least": "ge",
+    "is one of (comma-separated)": "in",
+    "is not one of (comma-separated)": "not_in",
+    "is missing": "is_missing",
+    "is not missing": "is_not_missing",
+}
 
 
 class WorkspaceError(ValueError):
@@ -149,6 +164,57 @@ def load_upload(content: bytes, filename: str, audit: AuditSink | None = None) -
 
 def load_sample(path: Path, audit: AuditSink | None = None) -> Workspace:
     return _load(lambda: load_csv_path(path), path.name, audit or NullAuditSink())
+
+
+def _filter_value(kind: str, text: str) -> str | int | float | bool:
+    text = text.strip()
+    if kind == "boolean":
+        if text.lower() not in ("true", "false"):
+            raise WorkspaceError(f"{text!r} is not true or false")
+        return text.lower() == "true"
+    if kind in ("integer", "float"):
+        try:
+            return int(text)
+        except ValueError:
+            pass
+        try:
+            number = float(text)
+        except ValueError:
+            raise WorkspaceError(f"{text!r} is not a number") from None
+        if not math.isfinite(number):
+            raise WorkspaceError(f"{text!r} is not a finite number")
+        return number
+    return text  # dates stay YYYY-MM-DD text; validation checks the format
+
+
+def parse_filter_condition(
+    profile: DatasetProfile, column: str, operator: str, text: str
+) -> FilterCondition:
+    """Turn the three filter widgets (column, operator label, value text) into a condition.
+
+    The value text is typed by the column's inferred type. Raises :class:`WorkspaceError` for an
+    unknown column or operator, or text that does not fit the type; the step itself is
+    validated later by ``set_cleaning``.
+    """
+    kinds = {c.name: c.inferred_type for c in profile.columns}
+    if column not in kinds:
+        raise WorkspaceError(f"unknown column {column!r}")
+    op = FILTER_OPERATORS.get(operator)
+    if op is None:
+        raise WorkspaceError(f"unknown filter operator {operator!r}")
+    kind = kinds[column]
+    if op in ("is_missing", "is_not_missing"):
+        return FilterCondition(column=column, op=op)
+    if op in ("in", "not_in"):
+        parts = [part for part in text.split(",") if part.strip()]
+        if not parts:
+            raise WorkspaceError(f"enter at least one value for {column!r}")
+        return FilterCondition(
+            column=column, op=op, value=tuple(_filter_value(kind, part) for part in parts)
+        )
+    if not text.strip():
+        raise WorkspaceError(f"enter a value for {column!r}")
+    return FilterCondition(column=column, op=op, value=_filter_value(kind, text))
 
 
 def set_cleaning(workspace: Workspace, plan: CleaningPlan) -> None:

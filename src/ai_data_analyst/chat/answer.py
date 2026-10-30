@@ -384,11 +384,13 @@ def _finish(
     writer: _Writer,
     assumptions: tuple[str, ...] = (),
     artifact: AnalysisArtifact | None = None,
+    notes: tuple[str, ...] = (),
 ) -> ChatAnswer:
     bad = ungrounded_numbers(text, writer.evidence, sorted(writer.labels))
     if bad:  # fail closed: never show a number we cannot trace
         return _unsupported("The answer could not be grounded in a computed result.")
     warnings = list(artifact.warnings) if artifact else []
+    warnings.extend(notes)
     if artifact and artifact.provenance.cleaning:
         warnings.append("Computed on cleaned data: " + "; ".join(artifact.provenance.cleaning))
     return ChatAnswer(
@@ -439,7 +441,12 @@ def answer_question(
         return _unsupported(route.reason)
     if isinstance(route, Lookup):
         text, writer = _from_profile(route, profile)
-        return _finish("profile", text, writer)
+        notes = (
+            ("Describes the file as uploaded, not the cleaned data: " + "; ".join(cleaning),)
+            if cleaning
+            else ()
+        )
+        return _finish("profile", text, writer, notes=notes)
 
     step, assumptions = route.step, route.assumptions
     try:
