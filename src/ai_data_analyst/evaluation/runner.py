@@ -34,7 +34,7 @@ from ai_data_analyst.evaluation.benchmark import (
     category_counts,
     missing_categories,
 )
-from ai_data_analyst.evaluation.metrics import LatencySummary, summarize_latency
+from ai_data_analyst.evaluation.metrics import PhaseLatency, summarize_phase_latency
 from ai_data_analyst.evaluation.results import EvaluationResult
 from ai_data_analyst.evaluation.resultset import (
     ResultSetCode,
@@ -128,7 +128,7 @@ class EvaluationRun(BaseModel):
     records: tuple[CaseRecord, ...]
     failures: tuple[CaseRecord, ...]
     results: tuple[EvaluationResult, ...]
-    latency: dict[str, LatencySummary]
+    latency: dict[str, PhaseLatency]
     category_counts: dict[str, int]
     missing_categories: tuple[CategoryName, ...]
 
@@ -359,10 +359,10 @@ def run_benchmark(
         failures=tuple(record for record in records if not record.passed),
         results=tuple(results),
         latency={
-            "generation": summarize_latency(generation_samples),
-            "validation": summarize_latency(validation_samples),
-            "execution": summarize_latency(execution_samples),
-            "total": summarize_latency(total_samples),
+            "generation": summarize_phase_latency(generation_samples),
+            "validation": summarize_phase_latency(validation_samples),
+            "execution": summarize_phase_latency(execution_samples),
+            "total": summarize_phase_latency(total_samples),
         },
         category_counts=category_counts(suite),
         missing_categories=missing_categories(suite),
