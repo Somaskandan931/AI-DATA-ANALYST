@@ -1,10 +1,12 @@
 """Evaluation primitives: benchmarks, typed metrics and result comparison."""
 
 from ai_data_analyst.evaluation.benchmark import (
+    CATEGORY_ALIASES,
     REQUIRED_CATEGORIES,
     BenchmarkCase,
     BenchmarkSuite,
     Scalar,
+    canonical_category,
     category_counts,
     load_benchmark,
     missing_categories,
@@ -34,6 +36,7 @@ from ai_data_analyst.evaluation.resultset import (
 )
 
 __all__ = [
+    "CATEGORY_ALIASES",
     "REQUIRED_CATEGORIES",
     "BenchmarkCase",
     "BenchmarkSuite",
@@ -50,6 +53,7 @@ __all__ = [
     "ResultSetRules",
     "Scalar",
     "Tolerances",
+    "canonical_category",
     "category_counts",
     "compare_profiles",
     "compare_result_sets",

@@ -4,8 +4,11 @@ Comparison rules are explicit rather than implied:
 
 - Column names compare case-insensitively in exact order.
 - A truncated actual result never matches.
-- ``int`` and ``float`` compare numerically under the tolerances; ``bool`` never
-  equals a number.
+- ``int`` and ``float`` compare numerically under the tolerances. SQLite has no
+  boolean type and returns ``1`` or ``0`` for a boolean expression, so by default
+  (``bool_equals_int``) a bool equals the numerically equal number and is
+  canonicalized as a number when ordering or de-duplicating rows. With
+  ``bool_equals_int=False`` a bool never equals a number.
 - ``None`` equals ``None`` only when ``null_equals_null`` is set.
 - ``NaN`` and infinities are invalid values, reported as ``invalid_value``.
 - Unordered comparison sorts both sides with a deterministic total order (None,
@@ -58,6 +61,7 @@ class ResultSetRules(BaseModel):
     float_rel_tol: float = Field(default=0.0, ge=0)
     null_equals_null: bool = True
     duplicates_matter: bool = True
+    bool_equals_int: bool = True
 
 
 class ResultSetComparison(BaseModel):
@@ -112,8 +116,8 @@ def compare_result_sets(
                 examples,
             )
     else:
-        actual_unique = _unique_rows(actual_rows)
-        expected_unique = _unique_rows(expected_rows)
+        actual_unique = _unique_rows(actual_rows, effective_rules)
+        expected_unique = _unique_rows(expected_rows, effective_rules)
         if len(actual_unique) != len(expected_unique):
             codes.add("row_count_mismatch")
         if columns_match and not invalid:
@@ -146,8 +150,8 @@ def _compare_rows(
     else:
         pairs = list(
             zip(
-                sorted(actual_rows, key=_row_order_key),
-                sorted(expected_rows, key=_row_order_key),
+                sorted(actual_rows, key=lambda row: _row_order_key(row, rules)),
+                sorted(expected_rows, key=lambda row: _row_order_key(row, rules)),
                 strict=False,
             )
         )
@@ -183,16 +187,17 @@ def _compare_unique_rows(
 
 def _unique_rows(
     rows: Sequence[Sequence[Scalar]],
+    rules: ResultSetRules,
 ) -> list[tuple[int, Sequence[Scalar]]]:
     seen: set[tuple[tuple[str, str], ...]] = set()
     unique: list[tuple[int, Sequence[Scalar]]] = []
     for index, row in enumerate(rows):
-        key = _canonical_row(row)
+        key = _canonical_row(row, rules)
         if key in seen:
             continue
         seen.add(key)
         unique.append((index, row))
-    unique.sort(key=lambda item: _row_order_key(item[1]))
+    unique.sort(key=lambda item: _row_order_key(item[1], rules))
     return unique
 
 
@@ -215,6 +220,11 @@ def _values_equal(
     if actual is None or expected is None:
         return actual is None and expected is None and rules.null_equals_null
     if isinstance(actual, bool) or isinstance(expected, bool):
+        if rules.bool_equals_int:
+            if isinstance(actual, bool) and isinstance(expected, (int, float)):
+                return _numbers_close(float(actual), expected, rules)
+            if isinstance(expected, bool) and isinstance(actual, (int, float)):
+                return _numbers_close(actual, float(expected), rules)
         return isinstance(actual, bool) and isinstance(expected, bool) and actual == expected
     if isinstance(actual, (int, float)) and isinstance(expected, (int, float)):
         return _numbers_close(actual, expected, rules)
@@ -245,14 +255,17 @@ def _has_invalid_value(rows: Sequence[Sequence[Scalar]]) -> bool:
     )
 
 
-def _row_order_key(row: Sequence[Scalar]) -> tuple[tuple[int, float | str], ...]:
-    return tuple(_order_key(value) for value in row)
+def _row_order_key(
+    row: Sequence[Scalar],
+    rules: ResultSetRules,
+) -> tuple[tuple[int, float | str], ...]:
+    return tuple(_order_key(value, rules) for value in row)
 
 
-def _order_key(value: Scalar) -> tuple[int, float | str]:
+def _order_key(value: Scalar, rules: ResultSetRules) -> tuple[int, float | str]:
     if value is None:
         return (0, 0.0)
-    if isinstance(value, bool):
+    if isinstance(value, bool) and not rules.bool_equals_int:
         return (1, float(value))
     if isinstance(value, (int, float)):
         return (2, _as_float(value))
@@ -266,14 +279,17 @@ def _as_float(value: int | float) -> float:
         return math.inf if value > 0 else -math.inf
 
 
-def _canonical_row(row: Sequence[Scalar]) -> tuple[tuple[str, str], ...]:
-    return tuple(_canonical_value(value) for value in row)
+def _canonical_row(
+    row: Sequence[Scalar],
+    rules: ResultSetRules,
+) -> tuple[tuple[str, str], ...]:
+    return tuple(_canonical_value(value, rules) for value in row)
 
 
-def _canonical_value(value: Scalar) -> tuple[str, str]:
+def _canonical_value(value: Scalar, rules: ResultSetRules) -> tuple[str, str]:
     if value is None:
         return ("none", "")
-    if isinstance(value, bool):
+    if isinstance(value, bool) and not rules.bool_equals_int:
         return ("bool", "1" if value else "0")
     if isinstance(value, (int, float)):
         number = _as_float(value)

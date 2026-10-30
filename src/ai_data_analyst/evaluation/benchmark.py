@@ -4,14 +4,17 @@ A suite is a versioned list of cases, each with one expected outcome: an allowed
 query with its expected columns and rows, a denied query with its reason code, or
 a question the system must clarify.
 
-Coverage mapping is by exact category name. Benchmark files may use their own
-category names; unmatched names simply count as "other" rather than against a
-required category, and :func:`category_counts` lists every observed name.
+Coverage mapping uses :data:`CATEGORY_ALIASES` before comparing names. Benchmark
+files may use their own category names; names with no alias simply count as
+"other" rather than against a required category, and :func:`category_counts`
+lists every observed name. The alias map is expected to shrink as the SQL owner
+adopts the canonical names.
 """
 
 from __future__ import annotations
 
 from collections import Counter
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Literal, Self, TypeAlias
 
@@ -39,6 +42,18 @@ REQUIRED_CATEGORIES: tuple[str, ...] = (
     "comments_obfuscation",
     "resource_heavy_queries",
 )
+
+# Names used by the existing benchmark file that mean a required category.
+CATEGORY_ALIASES: Mapping[str, str] = {
+    "basic_filter": "simple_filters",
+    "join": "joins",
+    "null_values": "null_behavior",
+}
+
+
+def canonical_category(name: str) -> str:
+    """Return the canonical category name, or ``name`` when it has no alias."""
+    return CATEGORY_ALIASES.get(name, name)
 
 
 class BenchmarkCase(BaseModel):
@@ -97,14 +112,22 @@ class BenchmarkSuite(BaseModel):
 
 
 def category_counts(suite: BenchmarkSuite) -> dict[str, int]:
-    """Return the number of cases per observed category name, sorted by name."""
-    counts = Counter(case.category for case in suite.cases)
+    """Return case counts per canonical category name, sorted by name.
+
+    Aliased names are counted under their canonical name. Names without an alias
+    still count as "other" and appear under their own name.
+    """
+    counts = Counter(canonical_category(case.category) for case in suite.cases)
     return dict(sorted(counts.items()))
 
 
 def missing_categories(suite: BenchmarkSuite) -> tuple[str, ...]:
-    """Return the required categories with no case, in ``REQUIRED_CATEGORIES`` order."""
-    present = {case.category for case in suite.cases}
+    """Return the required categories with no case, in ``REQUIRED_CATEGORIES`` order.
+
+    Aliased names are matched under their canonical name. Names without an alias
+    count as "other" and never satisfy a required category.
+    """
+    present = {canonical_category(case.category) for case in suite.cases}
     return tuple(name for name in REQUIRED_CATEGORIES if name not in present)
 
 

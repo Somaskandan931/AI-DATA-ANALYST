@@ -6,9 +6,11 @@ import pytest
 from pydantic import ValidationError
 
 from ai_data_analyst.evaluation import (
+    CATEGORY_ALIASES,
     REQUIRED_CATEGORIES,
     BenchmarkCase,
     BenchmarkSuite,
+    canonical_category,
     category_counts,
     load_benchmark,
     missing_categories,
@@ -227,19 +229,73 @@ def test_required_categories_are_the_expected_snake_case_names():
         assert re.fullmatch(r"[a-z][a-z0-9_]*", name)
 
 
-def test_category_counts_and_missing_categories_use_exact_names():
+def test_category_aliases_contain_only_the_known_names():
+    assert dict(CATEGORY_ALIASES) == {
+        "basic_filter": "simple_filters",
+        "join": "joins",
+        "null_values": "null_behavior",
+    }
+
+
+@pytest.mark.parametrize(
+    ("name", "canonical"),
+    [
+        ("basic_filter", "simple_filters"),
+        ("join", "joins"),
+        ("null_values", "null_behavior"),
+        ("boundary", "boundary"),
+        ("duplicates", "duplicates"),
+        ("custom_name", "custom_name"),
+    ],
+)
+def test_canonical_category_maps_only_known_aliases(name: str, canonical: str):
+    assert canonical_category(name) == canonical
+
+
+def test_category_counts_and_missing_categories_apply_aliases():
     suite = _suite(
         cases=(
-            _case(id="a", category="simple_filters"),
+            _case(id="a", category="basic_filter"),
             _case(id="b", category="custom_name"),
+            _case(id="c", category="join"),
         )
     )
 
-    assert category_counts(suite) == {"custom_name": 1, "simple_filters": 1}
+    assert category_counts(suite) == {
+        "custom_name": 1,
+        "joins": 1,
+        "simple_filters": 1,
+    }
     missing = missing_categories(suite)
     assert missing[0] == "aggregation"
     assert "simple_filters" not in missing
-    assert len(missing) == len(REQUIRED_CATEGORIES) - 1
+    assert "joins" not in missing
+    assert len(missing) == len(REQUIRED_CATEGORIES) - 2
+
+
+def test_existing_sql_benchmark_coverage_after_aliases():
+    suite = load_benchmark(SQL_BENCHMARK)
+
+    assert category_counts(suite) == {
+        "boundary": 2,
+        "duplicates": 1,
+        "empty_results": 1,
+        "joins": 1,
+        "null_behavior": 2,
+        "simple_filters": 1,
+    }
+    assert missing_categories(suite) == (
+        "aggregation",
+        "group_by_having",
+        "ctes",
+        "window_functions",
+        "ambiguous_wording",
+        "disallowed_tables_columns",
+        "write_statements",
+        "multiple_statements",
+        "comments_obfuscation",
+        "resource_heavy_queries",
+    )
 
 
 def test_load_benchmark_reads_the_existing_sql_benchmark():
