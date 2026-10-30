@@ -1,12 +1,12 @@
 # Oldest versions this project is tested against (see README "Minimum-version check").
 # Usage:  pip install -e ".[app,dev,gemini,ollama]" -c constraints-min.txt
-# Python 3.11 or 3.12. Every other transitive dependency floats to its latest release.
+# Verified on Python 3.12. Every other transitive dependency floats to its latest release.
 pandas==2.2.0
 numpy==1.26.0
 scipy==1.13.0
 scikit-learn==1.5.0
 threadpoolctl==3.1.0
-# pydantic 2.8.0 also passes without the ollama extra; ollama 0.4.0 itself needs >=2.9.
+# pydantic 2.8.0 also passes without the ollama extra; ollama 0.4.7 itself needs >=2.9.
 pydantic==2.9.0
 sqlalchemy==2.0.0
 sqlglot==30.13.0
@@ -20,5 +20,6 @@ pandas-stubs==3.0.0.260204
 google-genai==1.20.0
 ollama==0.4.7
 python-dotenv==1.0.0
+markdown==3.4.0
 # NumPy 1.x needs a pyarrow release built for it; the newest pyarrow requires NumPy 2.
 pyarrow==17.0.0
