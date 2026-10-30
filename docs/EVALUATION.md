@@ -39,3 +39,38 @@ Command: `python scripts/run_auto_eda_eval.py --repeats 30`. Output: `results/au
 | Latency | One untimed warm-up, then N timed runs; median and nearest-rank p95. |
 
 Limits of this run: one small synthetic dataset (485 rows x 6 columns); rule-based routing only, no model proposer; questions were written by the same team that wrote the router, so 1.0 means "no known regression", not general accuracy; latency is for the machine that ran it. Insight quality still needs the manual rubric review required above. The runner's own tests (`tests/unit/test_auto_eda_eval_runner.py`) check that it reports failures when the expected profile or answer is wrong.
+
+## Benchmark runner (`evaluation/runner.py`)
+
+`run_benchmark(suite, system, *, rules=None, clock=time.perf_counter, started_at, run_metadata)` runs each case once. `started_at` is supplied by the caller and must be UTC; `run_metadata` records the model, provider, model version, prompt version and optional database fingerprint. The runner never imports `sql_agent` or a model provider: the system under test is injected and implements `BenchmarkSystem`:
+
+- `generate(question) -> str | None` — SQL, or `None` when the system asks a clarifying question.
+- `validate(sql) -> ValidationOutcome` — allow/deny with reason codes and the normalized SQL.
+- `execute(normalized_sql) -> ExecutionOutcome` — columns, rows, truncation and timeout flags.
+
+Each phase is timed separately. Execution is called only after validation allows the query. Exceptions from any phase become a case failure with the code `generate_error`, `validate_error` or `execute_error`; the exception text is never stored.
+
+### Metrics
+
+Counts are reported as `EvaluationResult.value` equal to the count; ratios use the case denominator below as `sample_count`. A metric with a zero denominator is omitted rather than reported as 0 or 1.
+
+| Metric | Definition | Denominator |
+| --- | --- | --- |
+| `execution_accuracy` | Allowed-expected cases that passed (validation allowed, execution did not time out, result set matched) | Allowed-expected cases |
+| `query_validation_rate` | Allowed-expected cases the validator allowed, whether or not execution succeeded | Allowed-expected cases |
+| `denial_accuracy` | Denied-expected cases the validator denied, with the expected reason code among the observed codes when one is set | Denied-expected cases |
+| `clarification_accuracy` | Clarify-expected cases where `generate` returned `None` | Clarify-expected cases |
+| `safety_violations` | Denied-expected cases the validator allowed (target 0; no percentage is derived) | Denied-expected cases |
+| `failure_count` | Cases where a phase raised an exception | All cases |
+| `timeout_count` | Executions that timed out | All cases |
+| `truncation_count` | Executions that were truncated | All cases |
+
+Latency is summarized for generation, validation, execution and total (the sum when all three phases ran), using median, p95 (linear interpolation) and maximum. Timeout and truncation are raw counters; a derived "resource compliance" percentage is deliberately not defined until it is agreed with the SQL owner.
+
+### Reporting
+
+`write_run_json(run, path)` writes deterministic UTF-8 JSON with a trailing newline and LF endings, and refuses to overwrite an existing file unless `overwrite=True`; `read_run_json(path)` loads it. A run keeps `schema_version`, benchmark version, start time, run metadata, sample count, per-case records, failures, metrics, latency, category counts and missing categories. Records keep only codes, flags, counts and timings: no exception text, SQL from the system under test, parameter values or result rows.
+
+No accuracy or latency number is published without the run that produced it: quote the benchmark version, dataset/database fingerprint, model/provider/version, prompt version, sample count and the JSON artifact.
+
+The adapter that wires the real SQL pipeline to `BenchmarkSystem` belongs to the SQL owner.
