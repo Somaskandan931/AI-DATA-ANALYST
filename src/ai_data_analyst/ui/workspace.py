@@ -9,7 +9,10 @@ view of the data; changing the cleaning plan therefore discards them.
 from __future__ import annotations
 
 import contextlib
+import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pandas as pd
@@ -20,6 +23,9 @@ from ..analysis import (
     AnalysisStep,
     CleanedView,
     CleaningPlan,
+    ExecutionTimeError,
+    OperationInputError,
+    PlanValidationError,
     cleaned_view,
     execute_plan,
     execute_plan_on_view,
@@ -27,10 +33,20 @@ from ..analysis import (
     validate_cleaning,
 )
 from ..chat import ChatAnswer, answer_question
-from ..ingestion import IngestedCSV, load_csv, load_csv_path
+from ..ingestion import IngestedCSV, IngestionError, load_csv, load_csv_path
 from ..models import DatasetProfile
 from ..profiling import profile_ingested
-from ..reporting import Report, build_report, render_html, render_markdown
+from ..reporting import Report, ReportError, build_report, render_html, render_markdown
+from ..security import (
+    AuditEvent,
+    AuditEventType,
+    AuditModule,
+    AuditOutcome,
+    AuditSink,
+    NullAuditSink,
+    new_correlation_id,
+    safe_emit,
+)
 from ..visualization import ChartSpec, charts_for_artifacts
 
 MAX_ARTIFACTS = 20  # the report and plan types allow at most 20 steps
@@ -51,6 +67,8 @@ class Workspace:
     view: CleanedView | None = None
     artifacts: list[AnalysisArtifact] = field(default_factory=list)
     history: list[tuple[str, ChatAnswer]] = field(default_factory=list)
+    audit: AuditSink = field(default_factory=NullAuditSink)
+    correlation_id: str = field(default_factory=new_correlation_id)
 
     @property
     def frame(self) -> pd.DataFrame:
@@ -58,23 +76,79 @@ class Workspace:
         return self.view.frame if self.view is not None else self.typed
 
 
-def _build(ingested: IngestedCSV, source_name: str) -> Workspace:
+def _emit(
+    sink: AuditSink,
+    event_type: AuditEventType,
+    outcome: AuditOutcome,
+    correlation_id: str,
+    *,
+    reasons: tuple[str, ...] = (),
+    operation: str | None = None,
+    fingerprint: str | None = None,
+    row_count: int | None = None,
+    started: float | None = None,
+) -> None:
+    """Emit one M1 audit event; a failing sink never changes the outcome."""
+    duration = None if started is None else (time.perf_counter() - started) * 1000
+    safe_emit(
+        sink,
+        AuditEvent(
+            event_type=event_type,
+            module=AuditModule.M1,
+            outcome=outcome,
+            timestamp=datetime.now(UTC),
+            correlation_id=correlation_id,
+            reason_codes=reasons,
+            operation=operation,
+            dataset_fingerprint=fingerprint,
+            row_count=row_count,
+            duration_ms=duration,
+        ),
+    )
+
+
+def _build(ingested: IngestedCSV, source_name: str, audit: AuditSink) -> Workspace:
     profile = profile_ingested(ingested)
-    return Workspace(
+    workspace = Workspace(
         source_name=source_name,
         ingested=ingested,
         profile=profile,
         typed=typed_frame(ingested, profile),
+        audit=audit,
     )
+    _emit(
+        audit,
+        AuditEventType.UPLOAD_ACCEPTED,
+        AuditOutcome.OK,
+        workspace.correlation_id,
+        fingerprint=profile.dataset_fingerprint,
+        row_count=profile.row_count,
+    )
+    return workspace
 
 
-def load_upload(content: bytes, filename: str) -> Workspace:
+def _load(read: Callable[[], IngestedCSV], source_name: str, audit: AuditSink) -> Workspace:
+    try:
+        ingested = read()
+    except IngestionError as error:
+        _emit(
+            audit,
+            AuditEventType.UPLOAD_REJECTED,
+            AuditOutcome.DENIED,
+            new_correlation_id(),
+            reasons=(error.code,),
+        )
+        raise
+    return _build(ingested, source_name, audit)
+
+
+def load_upload(content: bytes, filename: str, audit: AuditSink | None = None) -> Workspace:
     """Validate and profile an upload. Raises ``IngestionError`` with a stable ``code``."""
-    return _build(load_csv(content, filename), filename)
+    return _load(lambda: load_csv(content, filename), filename, audit or NullAuditSink())
 
 
-def load_sample(path: Path) -> Workspace:
-    return _build(load_csv_path(path), path.name)
+def load_sample(path: Path, audit: AuditSink | None = None) -> Workspace:
+    return _load(lambda: load_csv_path(path), path.name, audit or NullAuditSink())
 
 
 def set_cleaning(workspace: Workspace, plan: CleaningPlan) -> None:
@@ -117,7 +191,39 @@ def run_step(workspace: Workspace, step: AnalysisStep) -> AnalysisArtifact:
     for existing in workspace.artifacts:
         if existing.parameters == step.model_dump(mode="json"):
             return existing
-    return _remember(workspace, _execute(workspace, step))
+    started = time.perf_counter()
+    try:
+        artifact = _execute(workspace, step)
+    except PlanValidationError:
+        _audit_step(workspace, step.operation, AuditOutcome.DENIED, "plan_invalid", started)
+        raise
+    except (OperationInputError, ExecutionTimeError) as error:
+        code = "execution_timeout" if isinstance(error, ExecutionTimeError) else "input_unsupported"
+        _audit_step(workspace, step.operation, AuditOutcome.ERROR, code, started)
+        raise
+    _audit_step(workspace, step.operation, AuditOutcome.OK, None, started)
+    return _remember(workspace, artifact)
+
+
+def _audit_step(
+    workspace: Workspace,
+    operation: str,
+    outcome: AuditOutcome,
+    reason: str | None,
+    started: float,
+) -> None:
+    denied = outcome is AuditOutcome.DENIED
+    _emit(
+        workspace.audit,
+        AuditEventType.PLAN_REJECTED if denied else AuditEventType.PLAN_STEP_EXECUTED,
+        outcome,
+        workspace.correlation_id,
+        reasons=() if reason is None else (reason,),
+        operation=operation,
+        fingerprint=workspace.profile.dataset_fingerprint,
+        row_count=len(workspace.frame),
+        started=started,
+    )
 
 
 def remove_artifact(workspace: Workspace, index: int) -> None:
@@ -128,6 +234,8 @@ def remove_artifact(workspace: Workspace, index: int) -> None:
 
 def ask(workspace: Workspace, question: str) -> ChatAnswer:
     """Answer a question; a newly computed artifact joins the workspace (and the report)."""
+    known = len(workspace.artifacts)
+    started = time.perf_counter()
     answer = answer_question(
         question,
         workspace.profile,
@@ -135,6 +243,8 @@ def ask(workspace: Workspace, question: str) -> ChatAnswer:
         data=workspace.view if workspace.view is not None else workspace.typed,
     )
     if answer.status == "computed" and answer.artifact is not None:
+        if not any(a.parameters == answer.artifact.parameters for a in workspace.artifacts[:known]):
+            _audit_step(workspace, answer.artifact.operation, AuditOutcome.OK, None, started)
         # If the session is full the answer is still shown; it is just not added to the report.
         with contextlib.suppress(WorkspaceError):
             _remember(workspace, answer.artifact)
@@ -160,5 +270,27 @@ def build(workspace: Workspace, title: str | None = None) -> Report:
 
 def report_files(workspace: Workspace, title: str | None = None) -> tuple[str, str]:
     """``(html, markdown)`` for the current artifacts."""
-    report = build(workspace, title)
-    return render_html(report), render_markdown(report)
+    started = time.perf_counter()
+    try:
+        report = build(workspace, title)
+        files = render_html(report), render_markdown(report)
+    except ReportError:
+        _emit(
+            workspace.audit,
+            AuditEventType.REPORT_GENERATED,
+            AuditOutcome.ERROR,
+            workspace.correlation_id,
+            reasons=("report_invalid",),
+            fingerprint=workspace.profile.dataset_fingerprint,
+            started=started,
+        )
+        raise
+    _emit(
+        workspace.audit,
+        AuditEventType.REPORT_GENERATED,
+        AuditOutcome.OK,
+        workspace.correlation_id,
+        fingerprint=workspace.profile.dataset_fingerprint,
+        started=started,
+    )
+    return files

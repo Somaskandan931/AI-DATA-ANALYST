@@ -8,7 +8,7 @@ An AI-assisted analytics platform combining deterministic Auto-EDA for CSV files
 **Tier:** T2
 **Collaborators:** Somaskandan, Nishi, Prathin
 
-The repository is a scaffold plus a fixed, independently verified sample dataset. The analytics and SQL features are not implemented yet.
+The repository contains the Auto-EDA modules (ingestion, profiling, analysis, charts, reports, grounded chat and a Streamlit workspace), the SQL agent pipeline (generation, validation, read-only execution), shared security primitives, and a fixed, independently verified sample dataset. The Auto-EDA evaluation runner (`scripts/run_auto_eda_eval.py`) records its results in `results/auto_eda_evaluation.json`; see `docs/EVALUATION.md` for method and limits. Not yet done: row filters, the SQL Analyst workspace, audit events in the SQL pipeline, and any SQL accuracy or latency measurement.
 
 ## Product modules
 

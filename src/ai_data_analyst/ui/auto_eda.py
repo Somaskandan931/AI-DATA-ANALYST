@@ -37,12 +37,14 @@ from ..analysis import (
 from ..chat import SUPPORTED_QUESTIONS, ChatAnswer, ChatError
 from ..ingestion import IngestionError
 from ..reporting import ReportError, chart_svg
+from ..security import InMemoryAuditSink
 from . import workspace as ws_api
 from .workspace import Workspace, WorkspaceError
 
 SAMPLE_PATH = Path(__file__).resolve().parents[3] / "data" / "sample" / "electricity_demand.csv"
 _KEY = "auto_eda_workspace"
 _UPLOAD_KEY = "auto_eda_upload_id"
+_AUDIT_KEY = "auto_eda_audit"
 _NUMERIC = ("integer", "float")
 _GROUPABLE = ("integer", "boolean", "date", "string")
 _AGGREGATIONS = ("count", "mean", "median", "sum", "min", "max", "std")
@@ -78,16 +80,24 @@ def _columns(workspace: Workspace, kinds: tuple[str, ...]) -> list[str]:
 # ---- upload ---------------------------------------------------------------------------------
 
 
+def _audit() -> InMemoryAuditSink:
+    """The session's audit sink (events hold codes, hashes and counts only)."""
+    sink = st.session_state.get(_AUDIT_KEY)
+    if not isinstance(sink, InMemoryAuditSink):
+        sink = st.session_state[_AUDIT_KEY] = InMemoryAuditSink()
+    return sink
+
+
 def _upload_section() -> Workspace | None:
     uploaded = st.file_uploader("Upload a CSV file", type=["csv"])
     use_sample = st.button("Use the sample dataset", disabled=not SAMPLE_PATH.exists())
     if uploaded is not None and st.session_state.get(_UPLOAD_KEY) != uploaded.file_id:
-        loaded = _guard(lambda: ws_api.load_upload(uploaded.getvalue(), uploaded.name))
+        loaded = _guard(lambda: ws_api.load_upload(uploaded.getvalue(), uploaded.name, _audit()))
         if loaded is not None:
             st.session_state[_KEY] = loaded
             st.session_state[_UPLOAD_KEY] = uploaded.file_id
     elif use_sample:
-        loaded = _guard(lambda: ws_api.load_sample(SAMPLE_PATH))
+        loaded = _guard(lambda: ws_api.load_sample(SAMPLE_PATH, _audit()))
         if loaded is not None:
             st.session_state[_KEY] = loaded
             st.session_state[_UPLOAD_KEY] = None

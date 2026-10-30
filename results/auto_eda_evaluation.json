@@ -1,0 +1,140 @@
+{
+  "report_schema_version": "1.0",
+  "benchmark_version": "auto-eda-1.0",
+  "subject": "auto-eda",
+  "method": "Rule-based chat router, no model proposer. Expected values computed from the raw CSV with pandas/scipy. Latency: one untimed warm-up then N timed runs, perf_counter, nearest-rank p95; chat_answer times all in-scope questions per run.",
+  "dataset": {
+    "name": "electricity_demand.csv",
+    "fingerprint": "e0b688d65789cee9cd2f0bee7581a9d4339d5b29a1a902501eb5f20b052a5354",
+    "row_count": 485,
+    "column_count": 6
+  },
+  "environment": {
+    "python": "3.12.3",
+    "platform": "Linux-6.18.44-fc-v185-x86_64-with-glibc2.39",
+    "cpu_count": "1",
+    "repeats": "30",
+    "pandas": "3.0.2",
+    "numpy": "2.4.4",
+    "scipy": "1.17.1",
+    "scikit-learn": "1.8.0",
+    "pydantic": "2.14.2"
+  },
+  "metrics": [
+    {
+      "metric_name": "profile_exact_match",
+      "value": 1.0,
+      "sample_count": 1,
+      "benchmark_version": "auto-eda-1.0"
+    },
+    {
+      "metric_name": "profile_field_accuracy",
+      "value": 1.0,
+      "sample_count": 77,
+      "benchmark_version": "auto-eda-1.0"
+    },
+    {
+      "metric_name": "analysis_coverage",
+      "value": 1.0,
+      "sample_count": 19,
+      "benchmark_version": "auto-eda-1.0"
+    },
+    {
+      "metric_name": "answer_correctness",
+      "value": 1.0,
+      "sample_count": 19,
+      "benchmark_version": "auto-eda-1.0"
+    },
+    {
+      "metric_name": "insight_grounding",
+      "value": 1.0,
+      "sample_count": 19,
+      "benchmark_version": "auto-eda-1.0"
+    },
+    {
+      "metric_name": "out_of_scope_refusal",
+      "value": 1.0,
+      "sample_count": 12,
+      "benchmark_version": "auto-eda-1.0"
+    },
+    {
+      "metric_name": "execution_reliability",
+      "value": 1.0,
+      "sample_count": 7,
+      "benchmark_version": "auto-eda-1.0"
+    }
+  ],
+  "latency": {
+    "load_and_profile": {
+      "sample_count": 30,
+      "median_ms": 2.984877000002939,
+      "p95_ms": 3.1183119999980136,
+      "min_ms": 2.8831749999937983,
+      "max_ms": 3.3951000000058684
+    },
+    "op_summary_stats": {
+      "sample_count": 30,
+      "median_ms": 5.792256000006546,
+      "p95_ms": 5.937098000003971,
+      "min_ms": 5.523202999995647,
+      "max_ms": 6.054534000014655
+    },
+    "op_grouped_aggregation": {
+      "sample_count": 30,
+      "median_ms": 7.515851000007956,
+      "p95_ms": 7.973709999987477,
+      "min_ms": 7.17198499998517,
+      "max_ms": 7.985163000000739
+    },
+    "op_correlation": {
+      "sample_count": 30,
+      "median_ms": 6.865853500002572,
+      "p95_ms": 7.2795469999960005,
+      "min_ms": 6.652639999998655,
+      "max_ms": 7.5231029999827115
+    },
+    "op_distribution": {
+      "sample_count": 30,
+      "median_ms": 5.626660499999048,
+      "p95_ms": 6.498027999981559,
+      "min_ms": 4.740698000006205,
+      "max_ms": 6.538027999994256
+    },
+    "op_outlier_summary": {
+      "sample_count": 30,
+      "median_ms": 4.852942000013627,
+      "p95_ms": 9.813887000007071,
+      "min_ms": 4.719748999974627,
+      "max_ms": 10.406307000010884
+    },
+    "op_clustering": {
+      "sample_count": 30,
+      "median_ms": 15.787392500001829,
+      "p95_ms": 25.34482900000512,
+      "min_ms": 14.249551999995447,
+      "max_ms": 27.59948400000667
+    },
+    "op_pca": {
+      "sample_count": 30,
+      "median_ms": 8.798419500010368,
+      "p95_ms": 9.631698999982063,
+      "min_ms": 7.037448999994922,
+      "max_ms": 11.093275999996877
+    },
+    "chat_answer": {
+      "sample_count": 30,
+      "median_ms": 40.43258949999995,
+      "p95_ms": 60.483957999991844,
+      "min_ms": 30.55522500000052,
+      "max_ms": 60.76375800000733
+    },
+    "chat_answer_per_question": {
+      "sample_count": 57,
+      "median_ms": 0.05637799998226001,
+      "p95_ms": 9.68547600001557,
+      "min_ms": 0.04085999998437728,
+      "max_ms": 10.352648000008458
+    }
+  },
+  "failures": []
+}

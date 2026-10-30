@@ -23,3 +23,19 @@ Include simple filters, aggregation, GROUP BY/HAVING, joins, NULL behavior, dupl
 ## Reporting rules
 
 Record benchmark version, model/provider/version, prompt version, dataset/database fingerprint, sample count, failures, and latency. Do not publish an accuracy number without the corresponding test set and method. Manually inspect grounded insight quality using a documented rubric.
+
+## Auto-EDA run (`scripts/run_auto_eda_eval.py`)
+
+Command: `python scripts/run_auto_eda_eval.py --repeats 30`. Output: `results/auto_eda_evaluation.json` (`EvaluationReport`, includes dataset fingerprint, library versions, platform, failures and latency).
+
+| Metric | Definition |
+| --- | --- |
+| `profile_exact_match`, `profile_field_accuracy` | Computed profile vs `data/expected/electricity_demand_profile.json` via `compare_profiles` (field accuracy counts 5 dataset fields + 12 per column). |
+| `analysis_coverage` | In-scope questions answered (not refused) / in-scope questions (19). |
+| `answer_correctness` | Answered in-scope questions whose shown numbers contain every expected value (relative tolerance 1e-6), expected values computed from the raw CSV with pandas/scipy. |
+| `insight_grounding` | Answers with evidence and no number outside that evidence / answered questions. |
+| `out_of_scope_refusal` | Out-of-scope questions (12) refused with no evidence and no artifact. |
+| `execution_reliability` | Each of the 7 allow-listed operations run as a one-step plan / operations attempted. |
+| Latency | One untimed warm-up, then N timed runs; median and nearest-rank p95. |
+
+Limits of this run: one small synthetic dataset (485 rows x 6 columns); rule-based routing only, no model proposer; questions were written by the same team that wrote the router, so 1.0 means "no known regression", not general accuracy; latency is for the machine that ran it. Insight quality still needs the manual rubric review required above. The runner's own tests (`tests/unit/test_auto_eda_eval_runner.py`) check that it reports failures when the expected profile or answer is wrong.

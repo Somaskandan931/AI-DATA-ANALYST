@@ -15,6 +15,7 @@ from ai_data_analyst.analysis import (
     SummaryStatsParams,
 )
 from ai_data_analyst.ingestion import IngestionError
+from ai_data_analyst.security import AuditEvent, InMemoryAuditSink
 from ai_data_analyst.ui import workspace as ws_api
 from ai_data_analyst.ui.workspace import MAX_ARTIFACTS, Workspace, WorkspaceError
 
@@ -134,3 +135,63 @@ def test_history_is_bounded(workspace: Workspace) -> None:
     for _ in range(ws_api.MAX_HISTORY + 5):
         ws_api.ask(workspace, "how many rows?")
     assert len(workspace.history) == ws_api.MAX_HISTORY
+
+
+# ---- audit events (shared contract with M2/Prathin) -----------------------------------------
+
+
+def _types(sink: InMemoryAuditSink) -> list[tuple[str, str]]:
+    return [(e.event_type.value, e.outcome.value) for e in sink.events]
+
+
+def test_upload_events_carry_codes_and_counts_only(sample_csv_path: Path) -> None:
+    sink = InMemoryAuditSink()
+    loaded = ws_api.load_sample(sample_csv_path, sink)
+    with pytest.raises(IngestionError):
+        ws_api.load_upload(b"", "data.csv", sink)
+    accepted, rejected = sink.events
+    assert accepted.dataset_fingerprint == loaded.profile.dataset_fingerprint
+    assert accepted.row_count == loaded.profile.row_count
+    assert accepted.correlation_id == loaded.correlation_id
+    assert (rejected.event_type.value, rejected.reason_codes) == (
+        "upload_rejected",
+        ("empty_file",),
+    )
+
+
+def test_steps_and_reports_are_audited(sample_csv_path: Path) -> None:
+    sink = InMemoryAuditSink()
+    workspace = ws_api.load_sample(sample_csv_path, sink)
+    step = SummaryStatsParams(columns=("demand_mwh",))
+    ws_api.run_step(workspace, step)
+    ws_api.run_step(workspace, step)  # reused: not executed again
+    with pytest.raises(PlanValidationError):
+        ws_api.run_step(workspace, SummaryStatsParams(columns=("region",)))
+    ws_api.report_files(workspace)
+    assert _types(sink) == [
+        ("upload_accepted", "ok"),
+        ("plan_step_executed", "ok"),
+        ("plan_rejected", "denied"),
+        ("report_generated", "ok"),
+    ]
+    assert sink.events[1].operation == "summary_stats"
+
+
+def test_chat_computation_is_audited_once(sample_csv_path: Path) -> None:
+    sink = InMemoryAuditSink()
+    workspace = ws_api.load_sample(sample_csv_path, sink)
+    question = "average demand_mwh by region"
+    ws_api.ask(workspace, question)
+    ws_api.ask(workspace, question)
+    executed = [e for e in sink.events if e.event_type.value == "plan_step_executed"]
+    assert len(executed) == 1
+
+
+def test_a_failing_sink_does_not_change_the_outcome(sample_csv_path: Path) -> None:
+    class Broken:
+        def emit(self, event: AuditEvent) -> None:
+            raise RuntimeError("down")
+
+    workspace = ws_api.load_sample(sample_csv_path, Broken())
+    artifact = ws_api.run_step(workspace, SummaryStatsParams(columns=("demand_mwh",)))
+    assert artifact in workspace.artifacts
