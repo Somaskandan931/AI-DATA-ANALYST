@@ -74,11 +74,57 @@ def test_int_and_float_compare_numerically():
     assert _compare([[1.0]], [[1]]).matches
 
 
-def test_bool_does_not_equal_a_number():
-    result = _compare([[True]], [[1]])
+@pytest.mark.parametrize("ordered", [True, False])
+def test_bool_equals_int_by_default(ordered: bool):
+    rules = ResultSetRules(ordered=ordered)
 
-    assert not result.matches
-    assert result.codes == ("value_mismatch",)
+    assert _compare([[True]], [[1]], rules=rules).matches
+    assert _compare([[False]], [[0]], rules=rules).matches
+    assert _compare([[True]], [[1.0]], rules=rules).matches
+    assert _compare([[1]], [[True]], rules=rules).matches
+
+
+@pytest.mark.parametrize("ordered", [True, False])
+def test_bool_does_not_equal_int_when_disabled(ordered: bool):
+    rules = ResultSetRules(ordered=ordered, bool_equals_int=False)
+
+    assert _compare([[True]], [[1]], rules=rules).codes == ("value_mismatch",)
+    assert _compare([[False]], [[0]], rules=rules).codes == ("value_mismatch",)
+
+
+@pytest.mark.parametrize("bool_equals_int", [True, False])
+@pytest.mark.parametrize("ordered", [True, False])
+def test_true_never_equals_two(bool_equals_int: bool, ordered: bool):
+    rules = ResultSetRules(ordered=ordered, bool_equals_int=bool_equals_int)
+
+    assert _compare([[True]], [[2]], rules=rules).codes == ("value_mismatch",)
+    assert _compare([[2]], [[True]], rules=rules).codes == ("value_mismatch",)
+
+
+def test_unordered_sort_treats_bool_as_a_number_by_default():
+    assert _compare([[True], [2]], [[1], [2]]).matches
+
+
+def test_unordered_sort_keeps_bool_separate_when_disabled():
+    rules = ResultSetRules(bool_equals_int=False)
+
+    assert _compare([[True], [2]], [[1], [2]], rules=rules).codes == ("value_mismatch",)
+
+
+def test_set_mode_canonicalizes_bools_as_numbers_by_default():
+    rules = ResultSetRules(duplicates_matter=False)
+
+    assert _compare([[True], [1]], [[1]], rules=rules).matches
+    assert _compare([[False], [0]], [[0]], rules=rules).matches
+
+
+def test_set_mode_keeps_bools_distinct_when_disabled():
+    rules = ResultSetRules(duplicates_matter=False, bool_equals_int=False)
+
+    assert _compare([[True], [1]], [[1]], rules=rules).codes == (
+        "row_count_mismatch",
+        "value_mismatch",
+    )
 
 
 def test_float_within_absolute_tolerance_matches():
