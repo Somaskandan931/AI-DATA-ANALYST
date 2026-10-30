@@ -18,6 +18,8 @@ from typing import Self
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+__all__ = ["PhaseLatency", "linear_percentile", "summarize_phase_latency"]
+
 
 class PhaseLatency(BaseModel):
     """Median, p95 and maximum of one timed phase, in milliseconds.
@@ -63,7 +65,21 @@ def summarize_phase_latency(values_ms: Sequence[float]) -> PhaseLatency:
     )
 
 
+def linear_percentile(values: Sequence[float], percent: float) -> float:
+    """The *percent* percentile (0..100) of *values*, using linear interpolation."""
+    if not values:
+        raise ValueError("at least one value is required")
+    for value in values:
+        if not math.isfinite(value):
+            raise ValueError("percentile values must be finite")
+    if not math.isfinite(percent) or not 0 <= percent <= 100:
+        raise ValueError("percent must be finite and between 0 and 100")
+    return _percentile(sorted(values), percent / 100)
+
+
 def _percentile(ordered: Sequence[float], fraction: float) -> float:
+    if not 0 <= fraction <= 1:
+        raise ValueError("fraction must be between 0 and 1")
     if len(ordered) == 1:
         return ordered[0]
     position = (len(ordered) - 1) * fraction
