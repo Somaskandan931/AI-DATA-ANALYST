@@ -17,14 +17,19 @@ The UI calls application services. Application services orchestrate domain modul
 - `reporting/`: reproducible report assembly.
 - `ui/`: Streamlit pages and widgets only.
 
-## Key interfaces (planned)
+## Key interfaces
 
-- `DatasetProfile`: versioned structured profile of a dataset.
-- `AnalysisPlan`: typed list of allow-listed operations and validated parameters.
-- `AnalysisArtifact`: operation, input columns, parameters, result reference, warnings, and provenance.
-- `SQLCandidate`: SQL text plus dialect and parameter values.
-- `SQLValidationResult`: allow/deny, normalized query metadata, and reasons.
-- `EvaluationResult`: metric name, score/value, sample count, and benchmark version.
+- `DatasetProfile` (`src/ai_data_analyst/models.py`): versioned structured profile of a dataset.
+- `AnalysisPlan`, `AnalysisStep` and `AnalysisArtifact` (`src/ai_data_analyst/analysis/plan.py`
+  and `src/ai_data_analyst/analysis/artifact.py`): typed list of allow-listed operations with
+  validated parameters, and the operation, input columns, parameters, result, warnings and
+  provenance of a computed step.
+- `SQLCandidate` and `SQLValidationResult` (`src/ai_data_analyst/sql_agent/contracts.py`): SQL text
+  plus dialect and parameter values; allow/deny, normalized query metadata, and reasons.
+- `EvaluationResult` (`src/ai_data_analyst/evaluation/results.py`): metric name, score/value,
+  sample count, and benchmark version.
+- `AuditEvent` (`src/ai_data_analyst/security/audit.py`): structured, free-text-free record of a
+  decision or action.
 
 ## Trust boundaries
 
@@ -44,9 +49,11 @@ Defined in `src/ai_data_analyst/models.py` as a frozen Pydantic model with `sche
 
 ## M1 analysis contracts: `AnalysisPlan` and `AnalysisArtifact`
 
-Currently defined in `analysis/plan.py` and `analysis/artifact.py` (schema version `1.0`) and
-exported from `ai_data_analyst.analysis`. They move to `models.py` once the contracts owner
-agrees, since `chat/`, `reporting/` and `evaluation/` consume them.
+Defined in `analysis/plan.py` and `analysis/artifact.py` (schema version `1.0`), exported from
+`ai_data_analyst.analysis`, and they deliberately stay there: the plan and artifact types belong
+to the M1 analysis domain rather than to the shared contract in `models.py`. `chat/`,
+`reporting/`, `visualization/` and `ui/` import them, which the import-boundary test permits
+because that test constrains M1-to-M2 and shared-module edges, not imports inside M1.
 
 - `AnalysisPlan`: 1 to 20 steps. Each step is one of the allow-listed operations, selected by
   the `operation` field: `summary_stats`, `grouped_aggregation`, `correlation`, `distribution`,
@@ -176,4 +183,4 @@ view of the data.
 ### Not yet implemented
 
 Row filters are deliberately absent until the filter contract is agreed with the contracts
-owner. The SQL Analyst workspace belongs to M2.
+owner; the proposed contract is in `docs/FILTERS.md`. The SQL Analyst workspace belongs to M2.

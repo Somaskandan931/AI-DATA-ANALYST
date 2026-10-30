@@ -53,3 +53,34 @@ Only enums, patterned reason/operation/table codes, lowercase SHA-256 hashes, nu
 A sink failure must never change a caller's validation or execution outcome. Use `safe_emit`, which catches `Exception` (not `BaseException`) and returns `False` without logging the exception or event contents.
 
 Hashes identify normalized SQL or canonical plan/step parameters; they are not anonymization. A low-entropy value (short SQL with literals, a small parameter set) can be guessed by brute force.
+
+Oversized or malformed uploads emit `upload_rejected` with the ingestion error code; `limit_exceeded` is reserved for runtime limits such as an SQL timeout or result truncation.
+
+### Reason-code vocabulary
+
+| Code | Source |
+| --- | --- |
+| `unsupported_extension` | ingestion `IngestionErrorCode` |
+| `file_too_large` | ingestion `IngestionErrorCode` |
+| `empty_file` | ingestion `IngestionErrorCode` |
+| `not_text` | ingestion `IngestionErrorCode` |
+| `bad_encoding` | ingestion `IngestionErrorCode` |
+| `parse_error` | ingestion `IngestionErrorCode` |
+| `missing_header` | ingestion `IngestionErrorCode` |
+| `duplicate_column` | ingestion `IngestionErrorCode` |
+| `ragged_row` | ingestion `IngestionErrorCode` |
+| `too_many_rows` | ingestion `IngestionErrorCode` |
+| `too_many_columns` | ingestion `IngestionErrorCode` |
+| `parse_error` | `sql_agent` `ViolationCode` |
+| `multiple_statements` | `sql_agent` `ViolationCode` |
+| `not_select` | `sql_agent` `ViolationCode` |
+| `unsupported_syntax` | `sql_agent` `ViolationCode` |
+| `unknown_table` | `sql_agent` `ViolationCode` |
+| `unresolved_column` | `sql_agent` `ViolationCode` |
+| `too_complex` | `sql_agent` `ViolationCode` |
+| `internal_check_failed` | `sql_agent` `ViolationCode` |
+| `filter_unknown_column` | proposed row filter contract |
+| `filter_bad_operator` | proposed row filter contract |
+| `filter_type_mismatch` | proposed row filter contract |
+| `filter_bad_value` | proposed row filter contract |
+| `filter_too_many` | proposed row filter contract |
