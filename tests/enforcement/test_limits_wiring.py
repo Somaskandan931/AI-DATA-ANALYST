@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import sqlite3
 from pathlib import Path
 
@@ -10,8 +9,8 @@ import pytest
 
 from ai_data_analyst.analysis import (
     AnalysisPlan,
-    ClusteringParams,
     ExecutionTimeError,
+    SummaryStatsParams,
     execute_plan,
 )
 from ai_data_analyst.ingestion import IngestionError, load_csv, load_csv_path
@@ -88,26 +87,82 @@ def test_max_columns_is_enforced() -> None:
     assert exc_info.value.code == "too_many_columns"
 
 
-def test_max_execution_seconds_is_enforced(tmp_path: Path) -> None:
-    path = tmp_path / "numeric.csv"
-    with path.open("w", newline="", encoding="utf-8") as handle:
-        writer = csv.writer(handle)
-        writer.writerow(["x", "y", "z"])
-        for number in range(60_000):
-            writer.writerow([number % 97, (number * 7) % 89, (number * 13) % 83])
+class _FakeClock:
+    """Clock stub for ``operations.time`` that advances on every reading."""
 
-    ingested = load_csv_path(path)
-    profile = profile_ingested(ingested)
-    step = ClusteringParams(columns=("x", "y", "z"), k=5)
-    plan = AnalysisPlan(steps=tuple(step for _ in range(20)))
+    def __init__(self, step_seconds: float) -> None:
+        self._now = 0.0
+        self._step_seconds = step_seconds
 
-    with pytest.raises(ExecutionTimeError):
+    def monotonic(self) -> float:
+        self._now += self._step_seconds
+        return self._now
+
+
+def _summary_plan() -> AnalysisPlan:
+    return AnalysisPlan(steps=tuple(SummaryStatsParams(columns=("demand_mwh",)) for _ in range(3)))
+
+
+def _small_dataset(sample_csv_path: Path):
+    ingested = load_csv_path(sample_csv_path)
+    return ingested.frame, profile_ingested(ingested)
+
+
+def test_max_execution_seconds_is_enforced(
+    sample_csv_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ai_data_analyst.analysis import operations
+
+    # Each reading advances 0.6 s: the deadline (0.6 + 1.0) is crossed at the
+    # second per-step check, so the run must stop before the last step.
+    monkeypatch.setattr(operations, "time", _FakeClock(step_seconds=0.6))
+    frame, profile = _small_dataset(sample_csv_path)
+
+    with pytest.raises(ExecutionTimeError, match="max_execution_seconds=1"):
         execute_plan(
-            plan,
-            ingested.frame,
+            _summary_plan(),
+            frame,
             profile,
             LimitsConfig(max_execution_seconds=1),
         )
+
+
+def test_max_execution_seconds_allows_a_plan_within_the_limit(
+    sample_csv_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ai_data_analyst.analysis import operations
+
+    monkeypatch.setattr(operations, "time", _FakeClock(step_seconds=0.6))
+    frame, profile = _small_dataset(sample_csv_path)
+    plan = _summary_plan()
+
+    artifacts = execute_plan(
+        plan,
+        frame,
+        profile,
+        LimitsConfig(max_execution_seconds=3600),
+    )
+
+    assert len(artifacts) == len(plan.steps)
+
+
+def test_max_execution_seconds_does_not_fire_without_elapsed_time(
+    sample_csv_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from ai_data_analyst.analysis import operations
+
+    monkeypatch.setattr(operations, "time", _FakeClock(step_seconds=0.0))
+    frame, profile = _small_dataset(sample_csv_path)
+    plan = _summary_plan()
+
+    artifacts = execute_plan(
+        plan,
+        frame,
+        profile,
+        LimitsConfig(max_execution_seconds=1),
+    )
+
+    assert len(artifacts) == len(plan.steps)
 
 
 def test_sql_timeout_seconds_is_enforced(tmp_path: Path) -> None:
