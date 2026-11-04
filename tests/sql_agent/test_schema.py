@@ -1,4 +1,3 @@
-
 import hashlib
 import sqlite3
 
@@ -163,6 +162,7 @@ def test_empty_database_with_allow_list_raises(tmp_path):
 # ---------------------------------------------------------
 # Tests for inspect_database()
 # ---------------------------------------------------------
+
 
 def test_inspect_database_discovers_all_tables_and_columns(db_path):
     result = inspect_database(db_path)

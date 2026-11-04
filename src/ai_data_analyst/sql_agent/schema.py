@@ -138,6 +138,8 @@ def _read_table(
         for name, declared_type, not_null, pk in rows
     )
     return TableSchema(name=table_name, columns=columns)
+
+
 def inspect_database(db_path: str | Path) -> dict[str, tuple[str, ...]]:
     """List available user tables and columns from a SQLite file, read-only.
 
@@ -176,10 +178,7 @@ def inspect_database(db_path: str | Path) -> dict[str, tuple[str, ...]]:
                 (name,),
             ).fetchall()
 
-            column_names = tuple(
-                column[0] for column in columns
-                if isinstance(column[0], str)
-            )
+            column_names = tuple(column[0] for column in columns if isinstance(column[0], str))
 
             if column_names:
                 available[name] = column_names

@@ -1,4 +1,3 @@
-
 """Gemini-backed SQL generation provider."""
 
 import os
@@ -23,23 +22,14 @@ class GeminiSQLGenerator:
     ) -> None:
         load_dotenv()
 
-        self._model = (
-            model
-            or os.getenv("LLM_MODEL")
-            or "gemini-2.5-flash"
-        )
+        self._model = model or os.getenv("LLM_MODEL") or "gemini-2.5-flash"
 
-        resolved_api_key = (
-            api_key
-            or os.getenv("LLM_API_KEY")
-        )
+        resolved_api_key = api_key or os.getenv("LLM_API_KEY")
 
         if not resolved_api_key:
             raise ValueError("LLM_API_KEY is not configured.")
 
-        self._client = genai.Client(
-            api_key=resolved_api_key
-        )
+        self._client = genai.Client(api_key=resolved_api_key)
 
     def generate(
         self,
@@ -48,9 +38,7 @@ class GeminiSQLGenerator:
     ) -> SQLCandidate:
         """Generate a SQL candidate from a question and schema."""
 
-        schema_description = schema.model_dump_json(
-            indent=2
-        )
+        schema_description = schema.model_dump_json(indent=2)
 
         prompt = f"""
 You are a SQL generation assistant.
@@ -86,9 +74,7 @@ User question:
         )
 
         if not response_text or not response_text.strip():
-            raise ValueError(
-                "Gemini returned an empty or invalid response."
-            )
+            raise ValueError("Gemini returned an empty or invalid response.")
 
         sql = response_text.strip()
 
@@ -107,9 +93,7 @@ User question:
         ).strip()
 
         if not sql:
-            raise ValueError(
-                "Gemini returned an empty or invalid response."
-            )
+            raise ValueError("Gemini returned an empty or invalid response.")
 
         return SQLCandidate(
             question=question,

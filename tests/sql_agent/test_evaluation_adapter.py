@@ -1,11 +1,8 @@
-
 import sqlite3
 
 import pytest
 
 from ai_data_analyst.security.limits import LimitsConfig
-from ai_data_analyst.sql_agent.ambiguity import detect_ambiguity
-from ai_data_analyst.sql_agent.contracts import SQLCandidate
 from ai_data_analyst.sql_agent.evaluation_adapter import M2BenchmarkSystem
 from ai_data_analyst.sql_agent.generator import StaticSQLGenerator
 from ai_data_analyst.sql_agent.schema import SchemaAllowList, discover_schema
@@ -49,9 +46,7 @@ def benchmark_system(benchmark_database):
 
     schema = discover_schema(benchmark_database, allow_list)
 
-    generator = StaticSQLGenerator(
-        "SELECT name FROM customers ORDER BY customer_id"
-    )
+    generator = StaticSQLGenerator("SELECT name FROM customers ORDER BY customer_id")
 
     return M2BenchmarkSystem(
         generator=generator,
@@ -76,9 +71,7 @@ def test_generate_returns_none_for_ambiguous_question(benchmark_system):
 
 
 def test_validate_denies_unknown_column(benchmark_system):
-    result = benchmark_system.validate(
-        "SELECT secret FROM customers"
-    )
+    result = benchmark_system.validate("SELECT secret FROM customers")
 
     assert result.allowed is False
     assert result.reason_codes

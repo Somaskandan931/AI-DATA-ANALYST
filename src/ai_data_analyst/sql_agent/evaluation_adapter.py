@@ -1,4 +1,3 @@
-
 """Adapter connecting the M2 SQL agent to the shared evaluation runner."""
 
 from collections.abc import Mapping
@@ -55,9 +54,7 @@ class M2BenchmarkSystem:
 
         return ValidationOutcome(
             allowed=result.allowed,
-            reason_codes=tuple(
-                violation.code.value for violation in result.violations
-            ),
+            reason_codes=tuple(violation.code.value for violation in result.violations),
             normalized_sql=result.normalized_sql,
         )
 

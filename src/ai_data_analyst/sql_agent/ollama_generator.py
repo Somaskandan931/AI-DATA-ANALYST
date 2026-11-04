@@ -1,4 +1,3 @@
-
 """Local Ollama adapter for natural-language-to-SQL generation."""
 
 import ollama

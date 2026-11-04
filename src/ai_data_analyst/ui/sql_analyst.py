@@ -1,4 +1,3 @@
-
 """Streamlit UI for the M2 Natural-Language-to-SQL workspace."""
 
 import hashlib
@@ -22,7 +21,6 @@ from ai_data_analyst.sql_agent.schema import (
     discover_schema,
     inspect_database,
 )
-
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SAMPLE_DB = PROJECT_ROOT / "data" / "sample" / "electricity_demand.db"
@@ -81,9 +79,7 @@ def _save_uploaded_database(uploaded_file) -> Path:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
 
-        raise SchemaError(
-            "The uploaded file is not a valid readable SQLite database."
-        ) from None
+        raise SchemaError("The uploaded file is not a valid readable SQLite database.") from None
 
     if previous_path:
         Path(previous_path).unlink(missing_ok=True)
@@ -168,9 +164,7 @@ def _select_schema(database_path: Path):
             )
 
             if not columns:
-                st.warning(
-                    f"Select at least one column for {table_name}."
-                )
+                st.warning(f"Select at least one column for {table_name}.")
                 return None
 
             selected_columns[table_name] = tuple(columns)
@@ -180,9 +174,7 @@ def _select_schema(database_path: Path):
         schema = discover_schema(database_path, allow_list)
 
     except SchemaError:
-        st.error(
-            "The selected database schema could not be approved safely."
-        )
+        st.error("The selected database schema could not be approved safely.")
         return None
 
     except ValueError:
@@ -202,20 +194,14 @@ def _show_execution_error(error: SQLExecutionError) -> None:
             "Try simplifying your question or reducing the amount of data."
         )
     elif "row limit" in message or "result limit" in message:
-        st.error(
-            "The query exceeded the configured result limit. "
-            "Try narrowing your question."
-        )
+        st.error("The query exceeded the configured result limit. Try narrowing your question.")
     elif "denied" in message or "not allowed" in message:
         st.error(
             "The query could not be executed because it did not meet "
             "the database safety restrictions."
         )
     else:
-        st.error(
-            "The database could not execute this query. "
-            "Check your question and try again."
-        )
+        st.error("The database could not execute this query. Check your question and try again.")
 
 
 def _show_query_result(details) -> None:
@@ -244,16 +230,12 @@ def _show_query_result(details) -> None:
             use_container_width=True,
         )
     else:
-        st.info(
-            "The query completed successfully but returned no rows."
-        )
+        st.info("The query completed successfully but returned no rows.")
 
     st.caption(f"Rows displayed: {len(result.rows)}")
 
     if result.truncated:
-        st.warning(
-            "Results were limited by the configured maximum row count."
-        )
+        st.warning("Results were limited by the configured maximum row count.")
 
 
 def _run_query(
@@ -283,16 +265,12 @@ def _run_query(
 
     except SQLClarificationRequired as exc:
         st.session_state[PENDING_QUESTION_KEY] = question
-        st.session_state[PENDING_CLARIFICATION_KEY] = (
-            exc.clarification_question
-        )
+        st.session_state[PENDING_CLARIFICATION_KEY] = exc.clarification_question
         st.rerun()
 
     except SQLQueryDenied as exc:
         _clear_pending_clarification()
-        st.error(
-            "The generated SQL was rejected by the safety validator."
-        )
+        st.error("The generated SQL was rejected by the safety validator.")
 
         for violation in exc.validation.violations:
             st.write(f"- {violation.message}")
@@ -307,9 +285,7 @@ def _run_query(
 
     except Exception:
         _clear_pending_clarification()
-        st.error(
-            "An unexpected error occurred. Please try again."
-        )
+        st.error("An unexpected error occurred. Please try again.")
 
 
 def _render_clarification(
@@ -345,9 +321,7 @@ def _render_clarification(
         if choice == "Across the entire dataset":
             clarified_question = f"{pending_question} overall"
         else:
-            clarified_question = (
-                f"{pending_question} for each available category"
-            )
+            clarified_question = f"{pending_question} for each available category"
 
         _clear_pending_clarification()
 
@@ -362,9 +336,7 @@ def _render_clarification(
 def render() -> None:
     """Render the SQL Analyst workspace."""
     st.subheader("SQL Analyst")
-    st.caption(
-        "Ask questions about your database using natural language."
-    )
+    st.caption("Ask questions about your database using natural language.")
 
     database_path = _select_database()
 
@@ -377,24 +349,15 @@ def render() -> None:
         return
 
     table_count = len(schema.tables)
-    column_count = sum(
-        len(table.columns) for table in schema.tables
-    )
+    column_count = sum(len(table.columns) for table in schema.tables)
 
-    st.caption(
-        f"{table_count} approved table(s) • "
-        f"{column_count} approved column(s)"
-    )
+    st.caption(f"{table_count} approved table(s) • {column_count} approved column(s)")
 
     with st.expander("Approved database schema"):
         for table in schema.tables:
             st.write(f"**Table:** `{table.name}`")
             st.write(
-                "**Allowed columns:** "
-                + ", ".join(
-                    f"`{column.name}`"
-                    for column in table.columns
-                )
+                "**Allowed columns:** " + ", ".join(f"`{column.name}`" for column in table.columns)
             )
 
     question = st.text_area(
@@ -406,18 +369,12 @@ def render() -> None:
 
     pending_question = st.session_state.get(PENDING_QUESTION_KEY)
 
-    if (
-        pending_question
-        and question.strip()
-        and question.strip() != pending_question
-    ):
+    if pending_question and question.strip() and question.strip() != pending_question:
         _clear_pending_clarification()
 
     if st.button("Generate SQL and Run", type="primary"):
         if not question.strip():
-            st.warning(
-                "Enter a question before running the SQL Analyst."
-            )
+            st.warning("Enter a question before running the SQL Analyst.")
         else:
             _clear_pending_clarification()
             _run_query(

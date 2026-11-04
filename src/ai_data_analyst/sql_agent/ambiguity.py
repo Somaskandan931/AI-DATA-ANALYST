@@ -1,4 +1,3 @@
-
 """Deterministic ambiguity detection for natural-language SQL questions.
 
 This module does not generate SQL or call an AI provider. It identifies a
@@ -55,12 +54,8 @@ def _is_ranking_question(question: str) -> bool:
     """Check whether the question appears to request ranked results."""
     words = set(question.replace("-", " ").split())
 
-    has_ranking_term = any(
-        term in words for term in _RANKING_TERMS
-    )
-    has_ranking_context = any(
-        term in words for term in _RANKING_CONTEXT
-    )
+    has_ranking_term = any(term in words for term in _RANKING_TERMS)
+    has_ranking_context = any(term in words for term in _RANKING_CONTEXT)
 
     return has_ranking_term and has_ranking_context
 
@@ -79,9 +74,7 @@ def _has_grouping_instruction(question: str) -> bool:
         "across the entire dataset",
     )
 
-    return any(
-        phrase in question for phrase in grouping_phrases
-    )
+    return any(phrase in question for phrase in grouping_phrases)
 
 
 def _has_groupable_column(schema: SchemaSnapshot) -> bool:

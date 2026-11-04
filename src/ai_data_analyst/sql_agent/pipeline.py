@@ -1,4 +1,3 @@
-
 """Orchestration for the validated, read-only SQL Agent flow."""
 
 from collections.abc import Mapping, Sequence
@@ -72,11 +71,7 @@ def _provider_failure_message(error: Exception) -> str:
         if value
     ).lower()
 
-    if (
-        status_number == 429
-        or "resource_exhausted" in details
-        or "quota" in details
-    ):
+    if status_number == 429 or "resource_exhausted" in details or "quota" in details:
         return (
             "The AI provider's request quota has been reached. "
             "Please wait and try again, or check your provider's usage limits."
@@ -99,17 +94,14 @@ def _provider_failure_message(error: Exception) -> str:
             "Check the model name in your configuration."
         )
 
-    if (
-        isinstance(error, (TimeoutError, ConnectionError, OSError))
-        or any(
-            marker in details
-            for marker in (
-                "timeout",
-                "timed out",
-                "connectionerror",
-                "connecterror",
-                "network",
-            )
+    if isinstance(error, (TimeoutError, ConnectionError, OSError)) or any(
+        marker in details
+        for marker in (
+            "timeout",
+            "timed out",
+            "connectionerror",
+            "connecterror",
+            "network",
         )
     ):
         return (
@@ -118,18 +110,14 @@ def _provider_failure_message(error: Exception) -> str:
         )
 
     if isinstance(error, ValueError) and (
-        "empty" in str(error).lower()
-        or "invalid response" in str(error).lower()
+        "empty" in str(error).lower() or "invalid response" in str(error).lower()
     ):
         return (
             "The AI provider returned an empty or unusable response. "
             "Please rephrase your question and try again."
         )
 
-    return (
-        "SQL generation failed. "
-        "Check the provider configuration and try again."
-    )
+    return "SQL generation failed. Check the provider configuration and try again."
 
 
 def run_sql_pipeline_with_details(
@@ -152,9 +140,7 @@ def run_sql_pipeline_with_details(
         raise SQLPipelineError("A question is required.")
 
     if not schema.tables:
-        raise SQLPipelineError(
-            "No accessible database schema is available."
-        )
+        raise SQLPipelineError("No accessible database schema is available.")
 
     # Check ambiguity before calling the AI provider.
     if not skip_ambiguity_check:
@@ -162,27 +148,20 @@ def run_sql_pipeline_with_details(
 
         if ambiguity.needs_clarification:
             raise SQLClarificationRequired(
-                ambiguity.clarification_question
-                or "Please clarify what result you want."
+                ambiguity.clarification_question or "Please clarify what result you want."
             )
 
     # Generate SQL candidate.
     try:
         candidate = generator.generate(question, schema)
     except Exception as exc:
-        raise SQLPipelineError(
-            _provider_failure_message(exc)
-        ) from None
+        raise SQLPipelineError(_provider_failure_message(exc)) from None
 
     if not isinstance(candidate, SQLCandidate):
-        raise SQLPipelineError(
-            "The AI provider returned an invalid SQL response."
-        )
+        raise SQLPipelineError("The AI provider returned an invalid SQL response.")
 
     if candidate.question is None:
-        candidate = candidate.model_copy(
-            update={"question": question}
-        )
+        candidate = candidate.model_copy(update={"question": question})
 
     # Validate generated SQL before execution.
     validation = validate_sql(candidate, schema)

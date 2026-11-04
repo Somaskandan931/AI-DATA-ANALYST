@@ -1,11 +1,10 @@
-
 from __future__ import annotations
 
 import hashlib
 import os
 import sqlite3
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 from dotenv import load_dotenv
@@ -20,7 +19,6 @@ from ai_data_analyst.security.limits import LimitsConfig
 from ai_data_analyst.sql_agent.evaluation_adapter import M2BenchmarkSystem
 from ai_data_analyst.sql_agent.provider_factory import create_sql_generator
 from ai_data_analyst.sql_agent.schema import SchemaAllowList, discover_schema
-
 
 ROOT = Path(__file__).resolve().parents[1]
 BENCHMARK_PATH = ROOT / "data" / "expected" / "sql_benchmark_stage3.json"
@@ -55,17 +53,14 @@ def build_sql_overrides(suite) -> dict[str, str]:
     overrides = {
         case.question: case.reference_sql
         for case in suite.cases
-        if case.category in deterministic_categories
-        and case.reference_sql is not None
+        if case.category in deterministic_categories and case.reference_sql is not None
     }
 
     # Deliberately exceed the validator's AST node limit.
     # This tests complexity validation independently of LLM generation.
     for case in suite.cases:
         if case.category == "resource_heavy_queries":
-            overrides[case.question] = (
-                "SELECT " + " + ".join(["1"] * 1100)
-            )
+            overrides[case.question] = "SELECT " + " + ".join(["1"] * 1100)
 
     return overrides
 
@@ -89,11 +84,7 @@ def main() -> None:
     model = os.getenv("LLM_MODEL", "").strip()
 
     if not model:
-        model = (
-            "qwen2.5-coder:7b"
-            if provider == "ollama"
-            else "gemini-2.5-flash"
-        )
+        model = "qwen2.5-coder:7b" if provider == "ollama" else "gemini-2.5-flash"
 
     print(f"Benchmark version: {suite.benchmark_version}")
     print(f"Test cases: {len(suite.cases)}")
@@ -126,11 +117,11 @@ def main() -> None:
         run = run_benchmark(
             suite,
             system,
-            started_at=datetime.now(timezone.utc),
+            started_at=datetime.now(UTC),
             run_metadata=metadata,
         )
 
-    timestamp = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+    timestamp = datetime.now(UTC).strftime("%Y%m%d_%H%M%S")
     output_path = OUTPUT_DIR / f"m2_sql_benchmark_{timestamp}.json"
 
     write_run_json(run, output_path)
@@ -143,11 +134,7 @@ def main() -> None:
 
     print("\nMetrics:")
     for metric in run.results:
-        print(
-            f"{metric.metric_name}: "
-            f"{metric.value:.4f} "
-            f"(samples={metric.sample_count})"
-        )
+        print(f"{metric.metric_name}: {metric.value:.4f} (samples={metric.sample_count})")
 
     print("\nCase details:")
     for record in run.records:
