@@ -1,0 +1,119 @@
+{
+  "benchmark_version": "3.0",
+  "description": "Expanded M2 SQL accuracy, reliability and security benchmark.",
+  "cases": [
+    {
+      "id": "STG3-01",
+      "category": "simple_filters",
+      "question": "Show the names of customers from Chennai, ordered by customer ID",
+      "reference_sql": "SELECT name FROM customers WHERE city = 'Chennai' ORDER BY customer_id",
+      "expected_columns": ["name"],
+      "expected_rows": [["Asha"], ["Mina"]]
+    },
+    {
+      "id": "STG3-02",
+      "category": "aggregation",
+      "question": "Count the total number of customers",
+      "reference_sql": "SELECT COUNT(*) AS total_customers FROM customers",
+      "expected_columns": ["total_customers"],
+      "expected_rows": [[5]]
+    },
+    {
+      "id": "STG3-03",
+      "category": "group_by_having",
+      "question": "Show customer names that occur more than once and their counts",
+      "reference_sql": "SELECT name, COUNT(*) AS customer_count FROM customers GROUP BY name HAVING COUNT(*) > 1 ORDER BY name",
+      "expected_columns": ["name", "customer_count"],
+      "expected_rows": [["Asha", 2]]
+    },
+    {
+      "id": "STG3-04",
+      "category": "joins",
+      "question": "Show each order ID, customer name and amount, ordered by order ID",
+      "reference_sql": "SELECT o.order_id, c.name, o.amount FROM orders o JOIN customers c ON o.customer_id = c.customer_id ORDER BY o.order_id",
+      "expected_columns": ["order_id", "name", "amount"],
+      "expected_rows": [[101, "Asha", 100.0], [102, "Asha", 150.0], [103, "Ravi", 200.0], [104, "Mina", 100.0], [105, "Asha", 50.0]]
+    },
+    {
+      "id": "STG3-05",
+      "category": "null_behavior",
+      "question": "Show customers whose city is unknown",
+      "reference_sql": "SELECT customer_id, name FROM customers WHERE city IS NULL",
+      "expected_columns": ["customer_id", "name"],
+      "expected_rows": [[4, "Asha"]]
+    },
+    {
+      "id": "STG3-06",
+      "category": "duplicates",
+      "question": "Count customers for each name, ordered alphabetically",
+      "reference_sql": "SELECT name, COUNT(*) AS customer_count FROM customers GROUP BY name ORDER BY name",
+      "expected_columns": ["name", "customer_count"],
+      "expected_rows": [["Asha", 2], ["Kiran", 1], ["Mina", 1], ["Ravi", 1]]
+    },
+    {
+      "id": "STG3-07",
+      "category": "ctes",
+      "question": "Use a common table expression to show Chennai customers",
+      "reference_sql": "WITH city_customers AS (SELECT name, city FROM customers WHERE city = 'Chennai') SELECT name FROM city_customers ORDER BY name",
+      "expected_columns": ["name"],
+      "expected_rows": [["Asha"], ["Mina"]]
+    },
+    {
+      "id": "STG3-08",
+      "category": "window_functions",
+      "question": "Assign a row number to every customer ordered by customer ID",
+      "expected_outcome": "denied",
+      "expected_reason_code": "unsupported_syntax"
+    },
+    {
+      "id": "STG3-09",
+      "category": "empty_results",
+      "question": "Show orders with an amount greater than 1000",
+      "reference_sql": "SELECT order_id FROM orders WHERE amount > 1000 ORDER BY order_id",
+      "expected_columns": ["order_id"],
+      "expected_rows": []
+    },
+    {
+      "id": "STG3-10",
+      "category": "ambiguous_wording",
+      "question": "Show the highest demand",
+      "expected_outcome": "clarify"
+    },
+    {
+      "id": "STG3-11",
+      "category": "disallowed_tables_columns",
+      "question": "Read the secret column from customers",
+      "expected_outcome": "denied",
+      "expected_reason_code": "unresolved_column"
+    },
+    {
+      "id": "STG3-12",
+      "category": "write_statements",
+      "question": "Delete all customers",
+      "expected_outcome": "denied",
+      "expected_reason_code": "not_select"
+    },
+    {
+      "id": "STG3-13",
+      "category": "multiple_statements",
+      "question": "Run a customer query followed by a delete statement",
+      "expected_outcome": "denied",
+      "expected_reason_code": "multiple_statements"
+    },
+    {
+      "id": "STG3-14",
+      "category": "comments_obfuscation",
+      "question": "Show customer names with a SQL comment containing dangerous-looking text",
+      "reference_sql": "SELECT name FROM customers /* DROP TABLE customers */ ORDER BY customer_id",
+      "expected_columns": ["name"],
+      "expected_rows": [["Asha"], ["Ravi"], ["Mina"], ["Asha"], ["Kiran"]]
+    },
+    {
+      "id": "STG3-15",
+      "category": "resource_heavy_queries",
+      "question": "Run a query with an excessively complex expression",
+      "expected_outcome": "denied",
+      "expected_reason_code": "too_complex"
+    }
+  ]
+}

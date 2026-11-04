@@ -342,3 +342,104 @@ git diff --stat
 - Evaluation documentation: check the existing evaluation documentation in `docs/`
 
 This document describes the M2 implementation and its reported verification status. Update it whenever implementation behavior, commands, test results, or scope changes.
+
+## 16. Stage-wise Implementation and Verification Status
+
+### Stage 1 — Friendly Error Handling
+
+Implemented and integrated friendly error handling for common SQL provider
+and pipeline failures.
+
+Capabilities include:
+
+- Categorization of provider quota errors (429).
+- Authentication and permission error handling (401/403).
+- Model or resource not found handling (404).
+- Network and timeout error handling.
+- Empty response and unexpected provider error handling.
+- Safe user-facing messages without exposing API keys, secrets,
+  stack traces, or raw provider responses.
+- Explicit SQL execution error handling.
+- Generic explanations for restricted tables and columns.
+
+### Stage 2 — Ambiguity Detection and Clarification
+
+Implemented ambiguity detection for ranking questions that do not specify
+whether the result should be calculated globally or separately by category.
+
+Capabilities include:
+
+- Detection of ranking terms such as highest, lowest, maximum, minimum,
+  top, and bottom.
+- Identification of relevant schema columns.
+- Recognition of grouping instructions such as per region, by category,
+  for each, and overall.
+- Clarification when a ranking question is ambiguous.
+- Support for continuing the pipeline after the user provides clarification.
+- Backward-compatible pipeline integration.
+
+Example clarification:
+
+"Should I find the result across the entire dataset, or separately for
+each available category, such as region?"
+
+### Stage 3 — SQL Accuracy and Reliability Evaluation
+
+Implemented the M2 benchmark integration with the shared evaluation framework.
+
+Components include:
+
+- A 15-case SQL benchmark covering all 15 required categories.
+- Benchmark execution script: `scripts/run_sql_benchmark.py`.
+- M2 evaluation adapter: `src/ai_data_analyst/sql_agent/evaluation_adapter.py`.
+- Adapter tests: `tests/sql_agent/test_evaluation_adapter.py`.
+- JSON benchmark reports stored under `data/benchmark_runs/`.
+- Benchmark definition stored at `data/expected/sql_benchmark_stage3.json`.
+
+The evaluation covers allowed queries, denied queries, clarification
+behavior, result-set matching, validation outcomes, and phase-wise latency.
+
+### Stage 3 Evaluation Summary
+
+Three benchmark runs were recorded:
+
+| Run | Result | Description |
+|---|---:|---|
+| Original model-driven run | 12/15 | Initial LLM generation evaluation |
+| Intermediate run | 14/15 | Intermediate regression evaluation |
+| Final deterministic run | 15/15 | Deterministic pipeline regression evaluation |
+
+The final deterministic run used SQL overrides for selected benchmark
+categories. Therefore, its 15/15 result demonstrates the tested pipeline
+behavior and must not be represented as 100% LLM-generated SQL accuracy.
+
+See `docs/EVALUATION.md` for the detailed methodology, metrics, latency,
+and benchmark artifacts.
+
+### Full Project Test Verification
+
+The full project test suite was executed and reported:
+
+- Passed: 1,232
+- Expected failures (xfail): 1
+- Duration: 27.05 seconds
+
+This result is separate from the 15-case SQL benchmark.
+
+## 17. Current M2 Scope and Remaining Work
+
+The three implementation stages described above have been implemented
+and tested in the recorded development environment.
+
+The following broader product and operational areas should remain subject
+to separate verification:
+
+- Final DataDa UI integration and visual design.
+- Further evaluation of model-generated SQL accuracy.
+- Additional provider and model configurations.
+- Production deployment and operational monitoring.
+- End-to-end verification with the complete application.
+
+The implementation and evaluation results documented here describe the
+verified development work; they do not constitute a production deployment
+or a claim of production readiness.
