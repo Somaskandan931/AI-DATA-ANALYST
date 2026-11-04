@@ -1,10 +1,16 @@
+
 import hashlib
 import sqlite3
 
 import pytest
 from pydantic import ValidationError
 
-from ai_data_analyst.sql_agent.schema import SchemaAllowList, SchemaError, discover_schema
+from ai_data_analyst.sql_agent.schema import (
+    SchemaAllowList,
+    SchemaError,
+    discover_schema,
+    inspect_database,
+)
 
 
 @pytest.fixture()
@@ -152,3 +158,56 @@ def test_empty_database_with_allow_list_raises(tmp_path):
     sqlite3.connect(path).close()
     with pytest.raises(SchemaError):
         discover_schema(path, _allow(customers=None))
+
+
+# ---------------------------------------------------------
+# Tests for inspect_database()
+# ---------------------------------------------------------
+
+def test_inspect_database_discovers_all_tables_and_columns(db_path):
+    result = inspect_database(db_path)
+
+    assert result == {
+        "customers": ("id", "name", "email", "ssn"),
+        "orders": ("id", "customer_id", "total"),
+    }
+
+
+def test_inspect_database_excludes_views_and_internal_tables(db_path):
+    result = inspect_database(db_path)
+
+    assert "customer_names" not in result
+    assert "sqlite_sequence" not in result
+    assert "sqlite_master" not in result
+
+
+def test_inspect_database_missing_file_raises(tmp_path):
+    with pytest.raises(SchemaError, match="not found"):
+        inspect_database(tmp_path / "absent.db")
+
+
+def test_inspect_database_invalid_file_raises(tmp_path):
+    bogus = tmp_path / "bogus.db"
+    bogus.write_text("this is not a sqlite database " * 20)
+
+    with pytest.raises(SchemaError):
+        inspect_database(bogus)
+
+
+def test_inspect_database_empty_database_raises(tmp_path):
+    path = tmp_path / "empty.db"
+    sqlite3.connect(path).close()
+
+    with pytest.raises(SchemaError, match="no readable user tables"):
+        inspect_database(path)
+
+
+def test_inspect_database_does_not_modify_database(db_path):
+    before = hashlib.sha256(db_path.read_bytes()).hexdigest()
+
+    inspect_database(db_path)
+
+    after = hashlib.sha256(db_path.read_bytes()).hexdigest()
+    assert before == after
+    assert not list(db_path.parent.glob("*-journal"))
+    assert not list(db_path.parent.glob("*-wal"))

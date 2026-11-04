@@ -138,3 +138,59 @@ def _read_table(
         for name, declared_type, not_null, pk in rows
     )
     return TableSchema(name=table_name, columns=columns)
+def inspect_database(db_path: str | Path) -> dict[str, tuple[str, ...]]:
+    """List available user tables and columns from a SQLite file, read-only.
+
+    This is for UI selection only. It does not create an approved schema
+    or grant any table or column access to the SQL generator.
+    """
+    path = Path(db_path)
+    if not path.is_file():
+        raise SchemaError("database file not found")
+
+    uri = path.resolve().as_uri() + "?mode=ro"
+
+    try:
+        connection = sqlite3.connect(uri, uri=True)
+    except sqlite3.Error as exc:
+        raise SchemaError("could not open database read-only") from exc
+
+    try:
+        connection.execute("PRAGMA query_only = ON")
+
+        available: dict[str, tuple[str, ...]] = {}
+
+        rows = connection.execute(
+            "SELECT name FROM sqlite_master WHERE type = 'table' ORDER BY name"
+        ).fetchall()
+
+        for (name,) in rows:
+            if not isinstance(name, str):
+                continue
+
+            if fold_identifier(name).startswith(_INTERNAL_PREFIX):
+                continue
+
+            columns = connection.execute(
+                "SELECT name FROM pragma_table_info(?) ORDER BY cid",
+                (name,),
+            ).fetchall()
+
+            column_names = tuple(
+                column[0] for column in columns
+                if isinstance(column[0], str)
+            )
+
+            if column_names:
+                available[name] = column_names
+
+        if not available:
+            raise SchemaError("no readable user tables found")
+
+        return available
+
+    except sqlite3.Error as exc:
+        raise SchemaError("could not inspect database metadata") from exc
+
+    finally:
+        connection.close()

@@ -1,0 +1,349 @@
+{
+  "schema_version": "1.0",
+  "benchmark_version": "3.0",
+  "started_at": "2026-11-04T10:13:13.758228Z",
+  "run_metadata": {
+    "model": "qwen2.5-coder:7b",
+    "provider": "ollama",
+    "model_version": "qwen2.5-coder:7b",
+    "prompt_version": "m2-sql-stage3-v1",
+    "database_fingerprint": "dfa81c49a9d10aeb1ef5ba0e232eb5cdc9754f1b06225b3392bafa4a96ec394f"
+  },
+  "sample_count": 15,
+  "records": [
+    {
+      "case_id": "STG3-01",
+      "category": "simple_filters",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": true,
+      "reason_codes": [],
+      "result_codes": [],
+      "generate_ms": 22.83449809999729,
+      "validate_ms": 0.020896900008665398,
+      "execute_ms": 0.008279500005301088
+    },
+    {
+      "case_id": "STG3-02",
+      "category": "aggregation",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": true,
+      "reason_codes": [],
+      "result_codes": [],
+      "generate_ms": 4.0569880999973975,
+      "validate_ms": 0.00368249999883119,
+      "execute_ms": 0.007433499995386228
+    },
+    {
+      "case_id": "STG3-03",
+      "category": "group_by_having",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": true,
+      "reason_codes": [],
+      "result_codes": [],
+      "generate_ms": 6.624008899991168,
+      "validate_ms": 0.0047264000022551045,
+      "execute_ms": 0.00879029999487102
+    },
+    {
+      "case_id": "STG3-04",
+      "category": "joins",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": true,
+      "reason_codes": [],
+      "result_codes": [],
+      "generate_ms": 7.925778499993612,
+      "validate_ms": 0.00810500000079628,
+      "execute_ms": 0.017158200003905222
+    },
+    {
+      "case_id": "STG3-05",
+      "category": "null_behavior",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": false,
+      "reason_codes": [],
+      "result_codes": [
+        "column_mismatch"
+      ],
+      "generate_ms": 4.231711800006451,
+      "validate_ms": 0.003546799998730421,
+      "execute_ms": 0.007668200007174164
+    },
+    {
+      "case_id": "STG3-06",
+      "category": "duplicates",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": true,
+      "reason_codes": [],
+      "result_codes": [],
+      "generate_ms": 6.091909599999781,
+      "validate_ms": 0.004873800004133955,
+      "execute_ms": 0.010007699995185249
+    },
+    {
+      "case_id": "STG3-07",
+      "category": "ctes",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": true,
+      "reason_codes": [],
+      "result_codes": [],
+      "generate_ms": 4.937658499999088,
+      "validate_ms": 0.00429519999306649,
+      "execute_ms": 0.011173799997777678
+    },
+    {
+      "case_id": "STG3-08",
+      "category": "window_functions",
+      "expected_outcome": "denied",
+      "observed_outcome": "denied",
+      "passed": true,
+      "reason_codes": [
+        "unsupported_syntax"
+      ],
+      "result_codes": [],
+      "generate_ms": 3.9000005926936865e-6,
+      "validate_ms": 0.0005190999945625663,
+      "execute_ms": null
+    },
+    {
+      "case_id": "STG3-09",
+      "category": "empty_results",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": false,
+      "reason_codes": [],
+      "result_codes": [
+        "column_mismatch"
+      ],
+      "generate_ms": 6.179755300006946,
+      "validate_ms": 0.005604599995422177,
+      "execute_ms": 0.012042400005157106
+    },
+    {
+      "case_id": "STG3-10",
+      "category": "ambiguous_wording",
+      "expected_outcome": "clarify",
+      "observed_outcome": "clarify",
+      "passed": true,
+      "reason_codes": [],
+      "result_codes": [],
+      "generate_ms": 0.000035500008380040526,
+      "validate_ms": null,
+      "execute_ms": null
+    },
+    {
+      "case_id": "STG3-11",
+      "category": "disallowed_tables_columns",
+      "expected_outcome": "denied",
+      "observed_outcome": "denied",
+      "passed": true,
+      "reason_codes": [
+        "unresolved_column"
+      ],
+      "result_codes": [],
+      "generate_ms": 1.4999968698248267e-6,
+      "validate_ms": 0.001420999993570149,
+      "execute_ms": null
+    },
+    {
+      "case_id": "STG3-12",
+      "category": "write_statements",
+      "expected_outcome": "denied",
+      "observed_outcome": "denied",
+      "passed": true,
+      "reason_codes": [
+        "not_select"
+      ],
+      "result_codes": [],
+      "generate_ms": 1.5999976312741637e-6,
+      "validate_ms": 0.00030840000545140356,
+      "execute_ms": null
+    },
+    {
+      "case_id": "STG3-13",
+      "category": "multiple_statements",
+      "expected_outcome": "denied",
+      "observed_outcome": "denied",
+      "passed": true,
+      "reason_codes": [
+        "multiple_statements"
+      ],
+      "result_codes": [],
+      "generate_ms": 1.300009898841381e-6,
+      "validate_ms": 0.00045840001257602125,
+      "execute_ms": null
+    },
+    {
+      "case_id": "STG3-14",
+      "category": "comments_obfuscation",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": false,
+      "reason_codes": [],
+      "result_codes": [
+        "row_count_mismatch"
+      ],
+      "generate_ms": 16.326471100008348,
+      "validate_ms": 0.009494600002653897,
+      "execute_ms": 0.09098530000483152
+    },
+    {
+      "case_id": "STG3-15",
+      "category": "resource_heavy_queries",
+      "expected_outcome": "denied",
+      "observed_outcome": "denied",
+      "passed": true,
+      "reason_codes": [
+        "too_complex"
+      ],
+      "result_codes": [],
+      "generate_ms": 2.2000021999701858e-6,
+      "validate_ms": 0.02445820000139065,
+      "execute_ms": null
+    }
+  ],
+  "failures": [
+    {
+      "case_id": "STG3-05",
+      "category": "null_behavior",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": false,
+      "reason_codes": [],
+      "result_codes": [
+        "column_mismatch"
+      ],
+      "generate_ms": 4.231711800006451,
+      "validate_ms": 0.003546799998730421,
+      "execute_ms": 0.007668200007174164
+    },
+    {
+      "case_id": "STG3-09",
+      "category": "empty_results",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": false,
+      "reason_codes": [],
+      "result_codes": [
+        "column_mismatch"
+      ],
+      "generate_ms": 6.179755300006946,
+      "validate_ms": 0.005604599995422177,
+      "execute_ms": 0.012042400005157106
+    },
+    {
+      "case_id": "STG3-14",
+      "category": "comments_obfuscation",
+      "expected_outcome": "allowed",
+      "observed_outcome": "allowed",
+      "passed": false,
+      "reason_codes": [],
+      "result_codes": [
+        "row_count_mismatch"
+      ],
+      "generate_ms": 16.326471100008348,
+      "validate_ms": 0.009494600002653897,
+      "execute_ms": 0.09098530000483152
+    }
+  ],
+  "results": [
+    {
+      "metric_name": "execution_accuracy",
+      "value": 0.6666666666666666,
+      "sample_count": 9,
+      "benchmark_version": "3.0"
+    },
+    {
+      "metric_name": "query_validation_rate",
+      "value": 1.0,
+      "sample_count": 9,
+      "benchmark_version": "3.0"
+    },
+    {
+      "metric_name": "denial_accuracy",
+      "value": 1.0,
+      "sample_count": 5,
+      "benchmark_version": "3.0"
+    },
+    {
+      "metric_name": "clarification_accuracy",
+      "value": 1.0,
+      "sample_count": 1,
+      "benchmark_version": "3.0"
+    },
+    {
+      "metric_name": "safety_violations",
+      "value": 0.0,
+      "sample_count": 5,
+      "benchmark_version": "3.0"
+    },
+    {
+      "metric_name": "failure_count",
+      "value": 0.0,
+      "sample_count": 15,
+      "benchmark_version": "3.0"
+    },
+    {
+      "metric_name": "timeout_count",
+      "value": 0.0,
+      "sample_count": 15,
+      "benchmark_version": "3.0"
+    },
+    {
+      "metric_name": "truncation_count",
+      "value": 0.0,
+      "sample_count": 15,
+      "benchmark_version": "3.0"
+    }
+  ],
+  "latency": {
+    "generation": {
+      "count": 15,
+      "median_ms": 4.231711800006451,
+      "p95_ms": 18.278879200005022,
+      "max_ms": 22.83449809999729
+    },
+    "validation": {
+      "count": 14,
+      "median_ms": 0.004510799997660797,
+      "p95_ms": 0.022143355006119234,
+      "max_ms": 0.02445820000139065
+    },
+    "execution": {
+      "count": 9,
+      "median_ms": 0.010007699995185249,
+      "p95_ms": 0.061454460004460976,
+      "max_ms": 0.09098530000483152
+    },
+    "total": {
+      "count": 9,
+      "median_ms": 6.197402300007525,
+      "p95_ms": 20.288985100013086,
+      "max_ms": 22.863674500011257
+    }
+  },
+  "category_counts": {
+    "aggregation": 1,
+    "ambiguous_wording": 1,
+    "comments_obfuscation": 1,
+    "ctes": 1,
+    "disallowed_tables_columns": 1,
+    "duplicates": 1,
+    "empty_results": 1,
+    "group_by_having": 1,
+    "joins": 1,
+    "multiple_statements": 1,
+    "null_behavior": 1,
+    "resource_heavy_queries": 1,
+    "simple_filters": 1,
+    "window_functions": 1,
+    "write_statements": 1
+  },
+  "missing_categories": []
+}
