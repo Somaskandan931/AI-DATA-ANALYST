@@ -11,7 +11,7 @@ def create_sql_generator() -> SQLGenerator:
     """Build the SQL generator selected by LLM_PROVIDER."""
     load_dotenv()
 
-    provider = os.getenv("LLM_PROVIDER", "ollama").strip().lower()
+    provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
     model = os.getenv("LLM_MODEL", "").strip()
 
     if provider == "gemini":

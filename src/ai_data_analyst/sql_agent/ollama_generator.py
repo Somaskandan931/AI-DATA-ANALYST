@@ -1,3 +1,4 @@
+
 """Local Ollama adapter for natural-language-to-SQL generation."""
 
 import ollama
@@ -38,7 +39,13 @@ class OllamaSQLGenerator:
                         "tables and columns. Never generate writes, DDL, or multiple "
                         "statements. Return only SQL, without Markdown fences. "
                         "If the question cannot be answered from the schema, do not "
-                        "invent tables or columns."
+                        "invent tables or columns. "
+                        "Always use clear, descriptive aliases for calculated "
+                        "columns. For example, use total_records for COUNT(*), "
+                        "average_demand_mwh for AVG(demand_mwh), "
+                        "total_demand_mwh for SUM(demand_mwh), and "
+                        "maximum_demand_mwh for MAX(demand_mwh). "
+                        "Never use generic aliases such as _col_1 or column1."
                     ),
                 },
                 {
