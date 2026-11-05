@@ -13,6 +13,7 @@ from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from ai_data_analyst.security.limits import LimitsConfig
 from ai_data_analyst.sql_agent.contracts import SchemaSnapshot
+from ai_data_analyst.sql_agent.errors import LLMConfigurationError
 from ai_data_analyst.sql_agent.executor import SQLExecutionError
 from ai_data_analyst.sql_agent.pipeline import (
     SQLClarificationRequired,
@@ -35,8 +36,6 @@ SAMPLE_CSV = PROJECT_ROOT / "data" / "sample" / "electricity_demand.csv"
 SAMPLE_BUILD_DIR = Path(tempfile.gettempdir()) / "ai_data_analyst_sample"
 SAMPLE_TABLE = "electricity_demand"
 _SAMPLE_REAL_COLUMNS = frozenset({"demand_mwh", "temperature_c"})
-
-MAX_UPLOAD_BYTES = 50 * 1024 * 1024
 
 
 def _build_sample_database(destination: Path) -> None:
@@ -109,8 +108,10 @@ def _save_uploaded_database(uploaded_file: UploadedFile) -> Path:
     if not content:
         raise SchemaError("The uploaded file is empty.")
 
-    if len(content) > MAX_UPLOAD_BYTES:
-        raise SchemaError("Database upload must not exceed 50 MB.")
+    limits = LimitsConfig.from_env()
+    if len(content) > limits.max_upload_bytes:
+        limit_mb = limits.max_upload_bytes / (1024 * 1024)
+        raise SchemaError(f"Database upload must not exceed {limit_mb:g} MB.")
 
     digest = hashlib.sha256(content).hexdigest()
     previous_digest = st.session_state.get("sql_db_upload_digest")
@@ -167,10 +168,11 @@ def _select_database() -> Path | None:
         st.markdown("**Selected database:** Electricity Demand Sample")
         return sample_path
 
+    limits = LimitsConfig.from_env()
     uploaded_file = st.file_uploader(
         "Upload a SQLite database",
         type=["db", "sqlite", "sqlite3"],
-        help="Maximum upload size: 50 MB.",
+        help=f"Maximum upload size: {limits.max_upload_bytes / (1024 * 1024):g} MB.",
         key="sql_database_upload",
     )
 
@@ -264,6 +266,23 @@ def _show_execution_error(error: SQLExecutionError) -> None:
         st.error("The database could not execute this query. Check your question and try again.")
 
 
+def _configuration_failure_message(error: LLMConfigurationError) -> str:
+    """Describe a provider configuration problem without echoing secret values."""
+    if "LLM_PROVIDER" in str(error):
+        return (
+            "The SQL provider is not supported. "
+            "Set LLM_PROVIDER to 'gemini' or 'ollama' in your .env file."
+        )
+
+    if "LLM_API_KEY" in str(error):
+        return "The SQL provider is missing its API key. Set LLM_API_KEY in your .env file."
+
+    return (
+        "The SQL provider configuration is invalid. "
+        "Check LLM_PROVIDER and LLM_API_KEY in your .env file."
+    )
+
+
 def _show_query_result(details: SQLPipelineResult) -> None:
     """Display validated SQL and its execution result."""
     st.success("Query executed successfully.")
@@ -342,6 +361,10 @@ def _run_query(
     except SQLPipelineError as exc:
         _clear_pending_clarification()
         st.error(str(exc))
+
+    except LLMConfigurationError as exc:
+        _clear_pending_clarification()
+        st.error(_configuration_failure_message(exc))
 
     except Exception:
         _clear_pending_clarification()
