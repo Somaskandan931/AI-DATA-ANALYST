@@ -1,16 +1,23 @@
 """Streamlit UI for the M2 Natural-Language-to-SQL workspace."""
 
+import csv
 import hashlib
+import os
+import sqlite3
 import tempfile
 from pathlib import Path
+from uuid import uuid4
 
 import streamlit as st
+from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from ai_data_analyst.security.limits import LimitsConfig
+from ai_data_analyst.sql_agent.contracts import SchemaSnapshot
 from ai_data_analyst.sql_agent.executor import SQLExecutionError
 from ai_data_analyst.sql_agent.pipeline import (
     SQLClarificationRequired,
     SQLPipelineError,
+    SQLPipelineResult,
     SQLQueryDenied,
     run_sql_pipeline_with_details,
 )
@@ -24,8 +31,60 @@ from ai_data_analyst.sql_agent.schema import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SAMPLE_DB = PROJECT_ROOT / "data" / "sample" / "electricity_demand.db"
+SAMPLE_CSV = PROJECT_ROOT / "data" / "sample" / "electricity_demand.csv"
+SAMPLE_BUILD_DIR = Path(tempfile.gettempdir()) / "ai_data_analyst_sample"
+SAMPLE_TABLE = "electricity_demand"
+_SAMPLE_REAL_COLUMNS = frozenset({"demand_mwh", "temperature_c"})
 
 MAX_UPLOAD_BYTES = 50 * 1024 * 1024
+
+
+def _build_sample_database(destination: Path) -> None:
+    """Create the sample SQLite database from the committed CSV (empty cells become NULL)."""
+    with SAMPLE_CSV.open(newline="", encoding="utf-8") as handle:
+        reader = csv.DictReader(handle)
+        columns = list(reader.fieldnames or [])
+        rows = [[None if row[c] == "" else row[c] for c in columns] for row in reader]
+
+    definitions = ", ".join(
+        f'"{c}" {"REAL" if c in _SAMPLE_REAL_COLUMNS else "TEXT"}' for c in columns
+    )
+    placeholders = ", ".join("?" for _ in columns)
+    connection = sqlite3.connect(destination)
+    try:
+        connection.execute(f'CREATE TABLE "{SAMPLE_TABLE}" ({definitions})')
+        connection.executemany(f'INSERT INTO "{SAMPLE_TABLE}" VALUES ({placeholders})', rows)
+        connection.commit()
+    finally:
+        connection.close()
+
+
+def _ensure_sample_database() -> Path | None:
+    """Return the sample database, building it from the CSV when the .db file is absent.
+
+    ``*.db`` is gitignored, so fresh clones and CI never contain the binary file.
+    """
+    if SAMPLE_DB.is_file():
+        return SAMPLE_DB
+    if not SAMPLE_CSV.is_file():
+        return None
+
+    built = SAMPLE_BUILD_DIR / "electricity_demand.db"
+    if built.is_file():
+        return built
+
+    partial = built.with_name(f"{built.stem}.{os.getpid()}.{uuid4().hex}.tmp")
+    try:
+        built.parent.mkdir(parents=True, exist_ok=True)
+        _build_sample_database(partial)
+        partial.replace(built)
+    except (OSError, sqlite3.Error):
+        return None
+    finally:
+        partial.unlink(missing_ok=True)
+    return built
+
+
 ALLOWED_EXTENSIONS = {".db", ".sqlite", ".sqlite3"}
 
 PENDING_QUESTION_KEY = "sql_pending_question"
@@ -38,7 +97,7 @@ def _clear_pending_clarification() -> None:
     st.session_state.pop(PENDING_CLARIFICATION_KEY, None)
 
 
-def _save_uploaded_database(uploaded_file) -> Path:
+def _save_uploaded_database(uploaded_file: UploadedFile) -> Path:
     """Validate and save an uploaded SQLite database to a temporary file."""
     filename = Path(uploaded_file.name)
 
@@ -90,7 +149,7 @@ def _save_uploaded_database(uploaded_file) -> Path:
     return temporary_path
 
 
-def _select_database():
+def _select_database() -> Path | None:
     """Choose the sample database or an uploaded SQLite database."""
     source = st.radio(
         "Choose database source",
@@ -100,12 +159,13 @@ def _select_database():
     )
 
     if source == "Sample database":
-        if not SAMPLE_DB.is_file():
+        sample_path = _ensure_sample_database()
+        if sample_path is None:
             st.error("The sample database is unavailable.")
             return None
 
         st.markdown("**Selected database:** Electricity Demand Sample")
-        return SAMPLE_DB
+        return sample_path
 
     uploaded_file = st.file_uploader(
         "Upload a SQLite database",
@@ -128,7 +188,7 @@ def _select_database():
         return None
 
 
-def _select_schema(database_path: Path):
+def _select_schema(database_path: Path) -> SchemaSnapshot | None:
     """Let the user select tables and columns before approving the schema."""
     try:
         available = inspect_database(database_path)
@@ -204,7 +264,7 @@ def _show_execution_error(error: SQLExecutionError) -> None:
         st.error("The database could not execute this query. Check your question and try again.")
 
 
-def _show_query_result(details) -> None:
+def _show_query_result(details: SQLPipelineResult) -> None:
     """Display validated SQL and its execution result."""
     st.success("Query executed successfully.")
 
@@ -240,7 +300,7 @@ def _show_query_result(details) -> None:
 
 def _run_query(
     question: str,
-    schema,
+    schema: SchemaSnapshot,
     database_path: Path,
     skip_ambiguity_check: bool = False,
 ) -> None:
@@ -290,7 +350,7 @@ def _run_query(
 
 def _render_clarification(
     current_question: str,
-    schema,
+    schema: SchemaSnapshot,
     database_path: Path,
 ) -> None:
     """Render and process a pending clarification."""
