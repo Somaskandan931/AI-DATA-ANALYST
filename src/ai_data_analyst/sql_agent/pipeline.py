@@ -56,8 +56,9 @@ def _provider_failure_message(error: Exception) -> str:
     if status is None:
         status = code
 
+    status_number: int | None
     try:
-        status_number = int(status)
+        status_number = int(status) if status is not None else None
     except (TypeError, ValueError):
         status_number = None
 
