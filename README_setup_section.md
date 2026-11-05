@@ -18,6 +18,25 @@ domain module, installs with no extras.
 LLM providers are optional for running the test suite: the Ollama integration test is
 skipped when no server is available.
 
+### SQL Analyst provider setup
+
+The SQL Analyst reads these variables from the environment or a local `.env` file; see
+`.env.example`:
+
+| Variable | Meaning | Default |
+|---|---|---|
+| `LLM_PROVIDER` | SQL provider: `gemini` or `ollama` | `gemini` |
+| `LLM_MODEL` | Optional model override | `gemini-2.5-flash` for Gemini; `qwen2.5-coder:7b` for Ollama |
+| `LLM_API_KEY` | Gemini API key; required only for Gemini | none |
+
+Blank or whitespace-only values are treated as unset. Gemini is the default provider and
+requires `LLM_API_KEY`. To use a local Ollama server instead, run `ollama serve`, make the
+model available with `ollama pull qwen2.5-coder:7b`, then set `LLM_PROVIDER=ollama`
+(optionally `LLM_MODEL`); the client connects to `http://localhost:11434`.
+
+`AIDA_MAX_UPLOAD_BYTES` (default 25 MB) caps both CSV uploads and SQLite database uploads
+in the SQL Analyst.
+
 ### Minimum-version check
 
 The declared lower bounds in `pyproject.toml` are verified, not assumed. To reproduce the

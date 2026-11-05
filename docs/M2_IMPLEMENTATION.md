@@ -151,7 +151,7 @@ LLM_API_KEY=your_actual_api_key
 
 Replace the placeholder with your own valid API key. Never commit `.env`, publish API keys, or include secret values in documentation or logs.
 
-The configured provider is selected through `provider_factory.py`.
+The configured provider is selected through `provider_factory.py`. Blank or whitespace-only values are treated as unset, so an empty `LLM_PROVIDER` selects `gemini`. `AIDA_MAX_UPLOAD_BYTES` (default 25 MB) in the same environment also caps SQLite database uploads in the SQL Analyst workspace.
 
 ## 8. Ollama Configuration
 
@@ -164,7 +164,7 @@ LLM_PROVIDER=ollama
 LLM_MODEL=qwen2.5-coder:7b
 ```
 
-Ensure the selected model is available in your local Ollama installation before running integration tests.
+Ensure the selected model is available in your local Ollama installation before running integration tests. The client connects to `http://localhost:11434`; the provider reads only `LLM_PROVIDER` and `LLM_MODEL`, not any `OLLAMA_*` variable.
 
 The Ollama integration test may depend on the local service and downloaded model. A failure caused by an unavailable service or model should be distinguished from a unit-test failure.
 

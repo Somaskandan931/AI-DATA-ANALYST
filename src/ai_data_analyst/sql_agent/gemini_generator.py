@@ -10,6 +10,7 @@ from ai_data_analyst.sql_agent.contracts import (
     SchemaSnapshot,
     SQLCandidate,
 )
+from ai_data_analyst.sql_agent.errors import LLMConfigurationError
 
 
 class GeminiSQLGenerator:
@@ -24,10 +25,10 @@ class GeminiSQLGenerator:
 
         self._model = model or os.getenv("LLM_MODEL") or "gemini-2.5-flash"
 
-        resolved_api_key = api_key or os.getenv("LLM_API_KEY")
+        resolved_api_key = (api_key or os.getenv("LLM_API_KEY") or "").strip()
 
         if not resolved_api_key:
-            raise ValueError("LLM_API_KEY is not configured.")
+            raise LLMConfigurationError("LLM_API_KEY is not configured. Set LLM_API_KEY in .env.")
 
         self._client = genai.Client(api_key=resolved_api_key)
 

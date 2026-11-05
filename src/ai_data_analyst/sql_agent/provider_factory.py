@@ -4,6 +4,7 @@ import os
 
 from dotenv import load_dotenv
 
+from ai_data_analyst.sql_agent.errors import LLMConfigurationError
 from ai_data_analyst.sql_agent.generator import SQLGenerator
 
 
@@ -11,7 +12,8 @@ def create_sql_generator() -> SQLGenerator:
     """Build the SQL generator selected by LLM_PROVIDER."""
     load_dotenv()
 
-    provider = os.getenv("LLM_PROVIDER", "gemini").strip().lower()
+    raw_provider = os.getenv("LLM_PROVIDER") or ""
+    provider = raw_provider.strip().lower() or "gemini"
     model = os.getenv("LLM_MODEL", "").strip()
 
     if provider == "gemini":
@@ -24,4 +26,7 @@ def create_sql_generator() -> SQLGenerator:
 
         return OllamaSQLGenerator(model=model or "qwen2.5-coder:7b")
 
-    raise ValueError("Unsupported LLM_PROVIDER. Choose 'gemini' or 'ollama'.")
+    raise LLMConfigurationError(
+        f"Unsupported LLM_PROVIDER value {raw_provider.strip()!r}. "
+        "Supported values are 'gemini' and 'ollama'."
+    )
