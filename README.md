@@ -61,6 +61,14 @@ If PowerShell blocks virtual-environment activation, use the PyCharm terminal co
 
 CI runs `ruff check .`, `ruff format --check .`, `mypy` and `python -m pytest` on Python 3.11 and 3.12, installing `.[app,dev]`. Run the same four commands before pushing.
 
+### SQL Analyst provider setup
+
+The SQL Analyst reads `LLM_PROVIDER` (`gemini` by default, or `ollama`), `LLM_MODEL`, and
+`LLM_API_KEY` (required for Gemini) from the environment or a local `.env`; see
+`.env.example`. Blank or whitespace-only values are treated as unset. For Ollama, run
+`ollama serve`, pull `qwen2.5-coder:7b`, and set `LLM_PROVIDER=ollama`. The shared
+`AIDA_MAX_UPLOAD_BYTES` limit (default 25 MB) also caps SQLite uploads.
+
 ### Minimum-version check
 
 The lower bounds in `pyproject.toml` are verified, not assumed. To reproduce the check in a
