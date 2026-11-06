@@ -67,6 +67,7 @@ def _provider_failure_message(error: Exception) -> str:
         for value in (
             getattr(error, "message", ""),
             getattr(error, "status", ""),
+            code,
             error.__class__.__name__,
         )
         if value
