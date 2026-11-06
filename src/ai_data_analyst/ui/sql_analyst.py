@@ -122,7 +122,7 @@ def _save_uploaded_database(uploaded_file: UploadedFile) -> Path:
         if existing_path.is_file():
             return existing_path
 
-    temporary_path = None
+    temporary_path: Path | None = None
 
     try:
         with tempfile.NamedTemporaryFile(
@@ -212,7 +212,7 @@ def _select_schema(database_path: Path) -> SchemaSnapshot | None:
         st.warning("Select at least one table.")
         return None
 
-    selected_columns = {}
+    selected_columns: dict[str, tuple[str, ...]] = {}
 
     with st.expander("Select permitted columns", expanded=True):
         for table_name in selected_tables:
