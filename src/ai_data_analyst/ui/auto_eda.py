@@ -40,7 +40,7 @@ from ..ingestion import IngestionError
 from ..reporting import ReportError, chart_svg
 from ..security import InMemoryAuditSink
 from . import workspace as ws_api
-from .theme import apply_theme, fresh_class
+from .theme import fresh_class
 from .workspace import Workspace, WorkspaceError
 
 SAMPLE_PATH = Path(__file__).resolve().parents[3] / "data" / "sample" / "electricity_demand.csv"
@@ -405,13 +405,11 @@ def _report_tab(workspace: Workspace) -> None:
 
 def render() -> None:
     """Draw the Auto-EDA workspace."""
-    apply_theme()
     hero = st.empty()
     workspace = _upload_section()
     if workspace is None:
         with hero.container():
             _empty_state()
-        st.info("Upload a CSV file or use the sample dataset to begin.")
         return
     tabs = st.tabs(["Profile", "Cleaning", "Analysis", "Chat", "Report"])
     for tab, draw in zip(
