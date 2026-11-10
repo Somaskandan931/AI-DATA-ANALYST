@@ -33,6 +33,17 @@ def test_upload_is_profiled_and_matches_the_sample(
     assert uploaded.source_name == "mine.csv"
 
 
+def test_upload_uses_the_environment_upload_cap(
+    sample_csv_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AIDA_MAX_UPLOAD_BYTES", "128")
+
+    with pytest.raises(IngestionError) as caught:
+        ws_api.load_upload(sample_csv_path.read_bytes(), "mine.csv")
+
+    assert caught.value.code == "file_too_large"
+
+
 @pytest.mark.parametrize(
     ("content", "filename", "code"),
     [

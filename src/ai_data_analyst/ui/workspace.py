@@ -46,6 +46,7 @@ from ..security import (
     AuditModule,
     AuditOutcome,
     AuditSink,
+    LimitsConfig,
     NullAuditSink,
     new_correlation_id,
     safe_emit,
@@ -157,9 +158,23 @@ def _load(read: Callable[[], IngestedCSV], source_name: str, audit: AuditSink) -
     return _build(ingested, source_name, audit)
 
 
-def load_upload(content: bytes, filename: str, audit: AuditSink | None = None) -> Workspace:
-    """Validate and profile an upload. Raises ``IngestionError`` with a stable ``code``."""
-    return _load(lambda: load_csv(content, filename), filename, audit or NullAuditSink())
+def load_upload(
+    content: bytes,
+    filename: str,
+    audit: AuditSink | None = None,
+    limits: LimitsConfig | None = None,
+) -> Workspace:
+    """Validate and profile an upload. Raises ``IngestionError`` with a stable ``code``.
+
+    ``limits`` defaults to the environment-configured limits, so the Streamlit upload
+    path honours ``AIDA_*`` overrides in the same way as SQL uploads.
+    """
+    active = LimitsConfig.from_env() if limits is None else limits
+    return _load(
+        lambda: load_csv(content, filename, limits=active),
+        filename,
+        audit or NullAuditSink(),
+    )
 
 
 def load_sample(path: Path, audit: AuditSink | None = None) -> Workspace:
