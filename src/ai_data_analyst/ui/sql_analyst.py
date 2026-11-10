@@ -31,6 +31,9 @@ from ai_data_analyst.sql_agent.schema import (
     inspect_database,
 )
 
+from . import evidence, layout
+from .theme import fresh_class
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SAMPLE_DB = PROJECT_ROOT / "data" / "sample" / "electricity_demand.db"
 SAMPLE_CSV = PROJECT_ROOT / "data" / "sample" / "electricity_demand.csv"
@@ -356,10 +359,24 @@ def _show_query_result(details: SQLPipelineResult, question: str | None = None) 
         st.text(f"Question: {question}")
     st.success("Query executed successfully.")
 
+    result = details.execution
+    limits = LimitsConfig.from_env()
+    fresh = fresh_class(
+        "sql-query-result",
+        (question, details.normalized_sql, len(result.rows)),
+    )
+    layout.evidence_view(
+        evidence.query_result_view(
+            question or "",
+            details.normalized_sql,
+            result,
+            max_rows=limits.max_result_rows,
+        ),
+        fresh=bool(fresh),
+    )
+
     st.markdown("**Validated SQL**")
     st.code(details.normalized_sql, language="sql")
-
-    result = details.execution
 
     st.markdown("**Query Results**")
 
@@ -487,64 +504,80 @@ def _render_clarification(
 
 def render() -> None:
     """Render the SQL Analyst workspace."""
-    st.subheader("SQL Analyst")
-    st.caption("Ask questions about your database using natural language.")
-
-    database_path = _select_database()
-
-    if database_path is None:
-        _clear_query_result()
-        st.session_state.pop(QUERY_SOURCE_KEY, None)
-        return
-
-    schema = _select_schema(database_path)
-
-    if schema is None or not schema.tables:
-        _clear_query_result()
-        st.session_state.pop(QUERY_SOURCE_KEY, None)
-        return
-
-    _sync_query_source(database_path, schema)
-
-    table_count = len(schema.tables)
-    column_count = sum(len(table.columns) for table in schema.tables)
-
-    st.caption(f"{table_count} approved table(s) • {column_count} approved column(s)")
-
-    with st.expander("Approved database schema"):
-        for table in schema.tables:
-            st.write(f"**Table:** `{table.name}`")
-            st.write(
-                "**Allowed columns:** " + ", ".join(f"`{column.name}`" for column in table.columns)
-            )
-
-    question = st.text_area(
-        "Ask a question about your database",
-        placeholder="Example: Show the average demand for each region.",
-        height=100,
-        key="sql_analyst_question",
-    )
-
-    pending_question = st.session_state.get(PENDING_QUESTION_KEY)
-
-    if pending_question and question.strip() and question.strip() != pending_question:
-        _clear_pending_clarification()
-
-    if st.button("Generate SQL and Run", type="primary"):
-        if not question.strip():
-            st.warning("Enter a question before running the SQL Analyst.")
+    rail, canvas = layout.shell()
+    with rail:
+        layout.section_label("Source")
+        database_path = _select_database()
+        layout.section_label("Database")
+        if database_path is None:
+            st.text("No database selected")
         else:
+            st.text(database_path.name)
+            st.text("SQLite · read-only")
+        layout.inspector(profile=None, m1_available=False)
+
+    with canvas:
+        layout.page_header(
+            "SQL Analyst",
+            "Ask the database",
+            "Questions become validated, read-only SQL with the result and its limits visible.",
+        )
+
+        if database_path is None:
+            _clear_query_result()
+            st.session_state.pop(QUERY_SOURCE_KEY, None)
+            st.text("Choose a database in the rail to continue.")
+            return
+
+        schema = _select_schema(database_path)
+
+        if schema is None or not schema.tables:
+            _clear_query_result()
+            st.session_state.pop(QUERY_SOURCE_KEY, None)
+            return
+
+        _sync_query_source(database_path, schema)
+
+        table_count = len(schema.tables)
+        column_count = sum(len(table.columns) for table in schema.tables)
+
+        st.caption(f"{table_count} approved table(s) • {column_count} approved column(s)")
+
+        with st.expander("Approved database schema"):
+            for table in schema.tables:
+                st.write(f"**Table:** `{table.name}`")
+                st.write(
+                    "**Allowed columns:** "
+                    + ", ".join(f"`{column.name}`" for column in table.columns)
+                )
+
+        question = st.text_area(
+            "Ask a question about your database",
+            placeholder="Example: Show the average demand for each region.",
+            height=100,
+            key="sql_analyst_question",
+        )
+
+        pending_question = st.session_state.get(PENDING_QUESTION_KEY)
+
+        if pending_question and question.strip() and question.strip() != pending_question:
             _clear_pending_clarification()
-            _run_query(
-                question=question.strip(),
-                schema=schema,
-                database_path=database_path,
-            )
 
-    _render_clarification(
-        current_question=question.strip(),
-        schema=schema,
-        database_path=database_path,
-    )
+        if st.button("Generate SQL and Run", type="primary"):
+            if not question.strip():
+                st.warning("Enter a question before running the SQL Analyst.")
+            else:
+                _clear_pending_clarification()
+                _run_query(
+                    question=question.strip(),
+                    schema=schema,
+                    database_path=database_path,
+                )
 
-    _show_last_query()
+        _render_clarification(
+            current_question=question.strip(),
+            schema=schema,
+            database_path=database_path,
+        )
+
+        _show_last_query()

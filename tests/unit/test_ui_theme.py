@@ -64,12 +64,22 @@ def test_scales_and_class_vocabulary_are_explicit() -> None:
     assert PROSE_MAX_WIDTH == "68ch"
     assert CLASSES == {
         "page_header": "fn-page-header",
+        "page_heading": "fn-page-heading",
+        "page_title": "fn-page-title",
+        "page_purpose": "fn-page-purpose",
         "section_label": "fn-section-label",
         "evidence_card": "fn-evidence-card",
         "evidence_value": "fn-evidence-value",
+        "evidence_value_missing": "fn-evidence-value--missing",
         "evidence_label": "fn-evidence-label",
         "evidence_note": "fn-evidence-note",
+        "card_grid": "fn-card-grid",
+        "computed_from": "fn-computed-from",
+        "footnote": "fn-footnote",
         "source_chip": "fn-source-chip",
+        "source_chip_computed": "fn-source-chip--computed",
+        "source_chip_query_result": "fn-source-chip--query-result",
+        "chip_shape": "fn-chip-shape",
         "rule": "fn-rule",
         "prose": "fn-prose",
         "highlight": "fn-highlight",
@@ -77,6 +87,7 @@ def test_scales_and_class_vocabulary_are_explicit() -> None:
         "wordmark": "fn-wordmark",
         "hero_title": "fn-hero-title",
         "hero_purpose": "fn-hero-purpose",
+        "shell_marker": "fn-shell-marker",
         "fresh": "fn-fresh",
     }
 
@@ -95,6 +106,13 @@ def test_stylesheet_has_paper_grain_utilities_and_reduced_motion() -> None:
     assert "68ch" in stylesheet
     assert ".fn-highlight" in stylesheet
     assert ".fn-fresh" in stylesheet
+    assert ".fn-page-heading" in stylesheet
+    assert ".fn-card-grid" in stylesheet
+    assert ".fn-chip-shape" in stylesheet
+    assert ".fn-footnote" in stylesheet
+    assert ".fn-computed-from" in stylesheet
+    assert ":has(.fn-shell-marker)" in stylesheet
+    assert "flex-direction: column-reverse" in stylesheet
     assert stylesheet.count("animation: fn-rise") == 1
     assert "@media (prefers-reduced-motion: reduce)" in stylesheet
     assert "animation: none" in stylesheet

@@ -39,6 +39,7 @@ from ..chat import SUPPORTED_QUESTIONS, ChatAnswer, ChatError
 from ..ingestion import IngestionError
 from ..reporting import ReportError, chart_svg
 from ..security import InMemoryAuditSink
+from . import evidence, layout
 from . import workspace as ws_api
 from .theme import fresh_class
 from .workspace import Workspace, WorkspaceError
@@ -108,7 +109,14 @@ def _empty_state() -> None:
     )
 
 
-def _upload_section() -> Workspace | None:
+def _current_workspace() -> Workspace | None:
+    """The dataset loaded in this session, if any."""
+    workspace = st.session_state.get(_KEY)
+    return workspace if isinstance(workspace, Workspace) else None
+
+
+def _source_controls() -> Workspace | None:
+    """Buttons and uploader that load or replace the dataset."""
     use_sample = st.button(
         "Use the sample dataset",
         type="primary",
@@ -125,34 +133,68 @@ def _upload_section() -> Workspace | None:
         if loaded is not None:
             st.session_state[_KEY] = loaded
             st.session_state[_UPLOAD_KEY] = None
-    workspace = st.session_state.get(_KEY)
-    return workspace if isinstance(workspace, Workspace) else None
+    return _current_workspace()
+
+
+# ---- rail -----------------------------------------------------------------------------------
+
+
+def _rail(workspace: Workspace) -> None:
+    """Source, dataset shape, working state and the inspector."""
+    profile = workspace.profile
+    layout.section_label("Source")
+    st.text(workspace.source_name)
+    layout.section_label("Dataset")
+    st.text(f"{profile.row_count:,} rows · {profile.column_count:,} columns")
+    layout.section_label("State")
+    if workspace.view is None:
+        st.text("No cleaning applied")
+    else:
+        st.text(f"Cleaning: {len(workspace.view.log)} step(s)")
+    st.text(f"Analyses: {len(workspace.artifacts)}")
+    st.text(f"Questions: {len(workspace.history)}")
+    events = workspace.audit.events if isinstance(workspace.audit, InMemoryAuditSink) else ()
+    layout.inspector(
+        profile=profile,
+        cleaning_log=workspace.view.log if workspace.view is not None else (),
+        audit_events=events,
+    )
+
+
+def _overview(workspace: Workspace) -> None:
+    """The compact overview cards; animate only when the dataset changes."""
+    layout.section_label("Overview")
+    fresh = fresh_class("auto-eda-overview", workspace.profile.dataset_fingerprint)
+    layout.evidence_view(evidence.overview_view(workspace.profile), fresh=bool(fresh))
 
 
 # ---- profile --------------------------------------------------------------------------------
 
 
 def _profile_tab(workspace: Workspace) -> None:
+    layout.page_header(
+        "Profile",
+        "Know the dataset",
+        "Column types, missing values and the first rows, exactly as uploaded.",
+    )
     profile = workspace.profile
-    st.text(f"Source: {workspace.source_name}")
-    a, b, c, d = st.columns(4)
-    a.metric("Rows", profile.row_count)
-    b.metric("Columns", profile.column_count)
-    c.metric("Duplicate rows", profile.duplicate_row_count)
-    d.metric("Missing cells", sum(col.missing_count for col in profile.columns))
     table = pd.DataFrame([col.model_dump() for col in profile.columns])
     for name in ("min", "max"):  # numbers for numeric columns, dates for date columns
         table[name] = table[name].map(lambda v: "" if v is None else str(v))
     st.dataframe(table, hide_index=True)
     st.caption("First rows exactly as uploaded")
     st.dataframe(workspace.ingested.frame.head(20))
-    st.text(f"Dataset fingerprint (SHA-256): {profile.dataset_fingerprint}")
 
 
 # ---- cleaning -------------------------------------------------------------------------------
 
 
 def _cleaning_tab(workspace: Workspace) -> None:
+    layout.page_header(
+        "Cleaning",
+        "Shape the working copy",
+        "Apply filters, de-duplication and fills; the upload itself never changes.",
+    )
     st.caption(
         "Cleaning works on a copy; the upload is never changed. Applying a plan discards "
         "analyses computed on the previous view."
@@ -328,6 +370,16 @@ def _results(workspace: Workspace) -> None:
                 st.warning(warning)
             for label, value in result.facts:
                 st.text(f"{label}: {value}")
+            parameters = ", ".join(f"{name}={value}" for name, value in method.parameters)
+            layout.computed_from(
+                (
+                    ("Operation", method.operation),
+                    ("Parameters", parameters or "none"),
+                    ("Rows used", f"{method.rows_used} of {method.rows_in_dataset}"),
+                    ("Input columns", ", ".join(method.input_columns) or "none"),
+                    ("Cleaning", "; ".join(method.cleaning) or "none"),
+                )
+            )
             for table in result.tables:
                 st.caption(table.caption)
                 st.dataframe(
@@ -342,6 +394,11 @@ def _results(workspace: Workspace) -> None:
 
 
 def _analysis_tab(workspace: Workspace) -> None:
+    layout.page_header(
+        "Analysis",
+        "Ask a computed question",
+        "Run one allow-listed operation and keep every number traceable to its inputs.",
+    )
     operation = st.selectbox("Analysis", _OPERATIONS)
     step = _step_form(workspace, operation)
     if step is not None:
@@ -353,6 +410,11 @@ def _analysis_tab(workspace: Workspace) -> None:
 
 
 def _chat_tab(workspace: Workspace) -> None:
+    layout.page_header(
+        "Chat",
+        "Ask in plain language",
+        "Answers use only the profile and computed results; every number has evidence.",
+    )
     with st.expander("What can I ask?"):
         for line in SUPPORTED_QUESTIONS:
             st.text(f"- {line}")
@@ -388,6 +450,11 @@ def _show_answer(answer: ChatAnswer) -> None:
 
 
 def _report_tab(workspace: Workspace) -> None:
+    layout.page_header(
+        "Report",
+        "Take the evidence with you",
+        "Export the profile and the analyses run in this session.",
+    )
     st.caption("The report contains the profile and the analyses run in this session.")
     title = st.text_input("Report title", value="Auto-EDA report", max_chars=200)
     files = _guard(lambda: ws_api.report_files(workspace, title.strip() or None))
@@ -405,17 +472,25 @@ def _report_tab(workspace: Workspace) -> None:
 
 def render() -> None:
     """Draw the Auto-EDA workspace."""
-    hero = st.empty()
-    workspace = _upload_section()
+    workspace = _current_workspace()
     if workspace is None:
-        with hero.container():
-            _empty_state()
+        _empty_state()
+        if _source_controls() is not None:
+            st.rerun()
         return
-    tabs = st.tabs(["Profile", "Cleaning", "Analysis", "Chat", "Report"])
-    for tab, draw in zip(
-        tabs,
-        (_profile_tab, _cleaning_tab, _analysis_tab, _chat_tab, _report_tab),
-        strict=True,
-    ):
-        with tab:
-            draw(workspace)
+
+    rail, canvas = layout.shell()
+    with rail:
+        if _source_controls() is not workspace:
+            st.rerun()
+        _rail(workspace)
+    with canvas:
+        _overview(workspace)
+        tabs = st.tabs(["Profile", "Cleaning", "Analysis", "Chat", "Report"])
+        for tab, draw in zip(
+            tabs,
+            (_profile_tab, _cleaning_tab, _analysis_tab, _chat_tab, _report_tab),
+            strict=True,
+        ):
+            with tab:
+                draw(workspace)

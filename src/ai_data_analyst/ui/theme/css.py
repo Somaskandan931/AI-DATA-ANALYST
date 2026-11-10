@@ -235,6 +235,128 @@ pre,
     line-height: 1.55;
 }
 
+.fn-page-heading {
+    max-width: var(--fn-prose);
+    margin: 0 0 var(--fn-space-5);
+}
+
+.fn-page-title {
+    margin: 0 0 var(--fn-space-2);
+    font-family: var(--fn-font-heading);
+    font-size: var(--fn-text-xxxl);
+    font-weight: 500;
+    letter-spacing: -0.015em;
+    line-height: 1.08;
+}
+
+.fn-page-purpose {
+    margin: 0;
+    color: var(--fn-ink-muted);
+    font-size: var(--fn-text-lg);
+    line-height: 1.55;
+}
+
+.fn-card-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+    gap: var(--fn-space-4);
+    margin: var(--fn-space-3) 0 var(--fn-space-5);
+    align-items: start;
+}
+
+.fn-card-grid .fn-evidence-card {
+    height: 100%;
+    margin: 0;
+}
+
+.fn-evidence-value--missing {
+    color: var(--fn-ink-muted);
+    font-style: italic;
+}
+
+.fn-chip-shape {
+    display: inline-block;
+    width: 0.42rem;
+    height: 0.42rem;
+    margin-right: 0.3rem;
+    border: 1px solid currentColor;
+    vertical-align: 0.02rem;
+}
+
+.fn-source-chip--computed .fn-chip-shape {
+    background: currentColor;
+}
+
+.fn-source-chip--query-result .fn-chip-shape {
+    transform: rotate(45deg);
+}
+
+.fn-footnote {
+    margin-left: 0.1rem;
+    font-size: var(--fn-text-xs);
+    line-height: 0;
+}
+
+.fn-footnote a {
+    color: var(--fn-persimmon-text);
+    font-family: var(--fn-font-mono);
+    text-decoration: none;
+}
+
+.fn-footnote a:hover {
+    text-decoration: underline;
+}
+
+.fn-computed-from {
+    margin-top: var(--fn-space-3);
+    border-top: var(--fn-rule-weight) solid var(--fn-rule);
+    padding-top: var(--fn-space-2);
+}
+
+.fn-computed-from summary {
+    cursor: pointer;
+    color: var(--fn-ink-muted);
+    font-family: var(--fn-font-mono);
+    font-size: var(--fn-text-xs);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+}
+
+.fn-computed-from dl {
+    display: grid;
+    grid-template-columns: max-content 1fr;
+    gap: 0.15rem 0.6rem;
+    margin: var(--fn-space-2) 0 0;
+    font-size: var(--fn-text-sm);
+}
+
+.fn-computed-from dt {
+    color: var(--fn-ink-muted);
+    font-family: var(--fn-font-mono);
+    font-size: var(--fn-text-xs);
+}
+
+.fn-computed-from dd {
+    margin: 0;
+    overflow-wrap: anywhere;
+}
+
+[data-testid="stText"],
+[data-testid="stCaptionContainer"],
+[data-testid="stMarkdown"] > div > p {
+    max-width: var(--fn-prose);
+}
+
+.fn-shell-marker {
+    display: none;
+}
+
+@media (max-width: 640px) {
+    [data-testid="stHorizontalBlock"]:has(.fn-shell-marker) {
+        flex-direction: column-reverse;
+    }
+}
+
 @keyframes fn-rise {
     from {
         opacity: 0;
