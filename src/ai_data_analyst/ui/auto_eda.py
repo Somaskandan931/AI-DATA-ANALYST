@@ -401,8 +401,10 @@ def _analysis_tab(workspace: Workspace) -> None:
     )
     operation = st.selectbox("Analysis", _OPERATIONS)
     step = _step_form(workspace, operation)
-    if step is not None:
-        _guard(lambda: ws_api.run_step(workspace, step))
+    artifact = _guard(lambda: ws_api.run_step(workspace, step)) if step is not None else None
+    if artifact is not None:
+        # the rail is drawn before the tabs, so refresh it with the new artifact
+        st.rerun()
     _results(workspace)
 
 

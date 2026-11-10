@@ -82,6 +82,7 @@ def test_analysis_result_shows_computed_from() -> None:
     computed = next(h.value for h in at.html if "<dt>Operation</dt>" in h.value)
     assert "<summary>Computed from</summary>" in computed
     assert "<dd>summary_stats</dd>" in computed
+    assert "Analyses: 1" in [t.value for t in at.text]
 
 
 def test_chat_answers_from_computed_results() -> None:
