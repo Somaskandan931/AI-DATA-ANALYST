@@ -28,8 +28,9 @@ Implemented capabilities include:
 - Maximum result-row limits and a result-truncation indicator.
 - Pipeline orchestration for generation, validation, and execution.
 - Unit and integration tests for SQL Agent components.
+- SQL Analyst Streamlit workspace (`ui/sql_analyst.py`) with sample and uploaded SQLite databases, ambiguity clarification, and specific configuration and provider error messages.
 
-The SQL Agent does not make every PRD requirement complete automatically. Frontend integration, ambiguity clarification, logging requirements, and other pending requirements must be evaluated separately before being marked complete.
+The SQL Agent does not make every PRD requirement complete automatically. Audit events in the SQL pipeline and wider accuracy and latency evaluation are still open and must be evaluated separately before being marked complete.
 
 ## 3. Technology Stack
 
@@ -145,7 +146,7 @@ Example configuration:
 
 ```dotenv
 LLM_PROVIDER=gemini
-LLM_MODEL=gemini-3.5-flash
+LLM_MODEL=gemini-2.5-flash
 LLM_API_KEY=your_actual_api_key
 ```
 
@@ -338,8 +339,9 @@ git diff --stat
 
 - Product requirements: `docs/PRD.md`
 - Architecture and module boundaries: `docs/ARCHITECTURE.md`
-- Security documentation: check the existing security documentation in `docs/`
-- Evaluation documentation: check the existing evaluation documentation in `docs/`
+- Security model: `docs/SECURITY.md`
+- Evaluation plan and results: `docs/EVALUATION.md`
+- Deployment: `docs/DEPLOYMENT.md`
 
 This document describes the M2 implementation and its reported verification status. Update it whenever implementation behavior, commands, test results, or scope changes.
 
@@ -434,10 +436,10 @@ and tested in the recorded development environment.
 The following broader product and operational areas should remain subject
 to separate verification:
 
-- Final DataDa UI integration and visual design.
+- Visual design of the SQL Analyst workspace.
 - Further evaluation of model-generated SQL accuracy.
 - Additional provider and model configurations.
-- Production deployment and operational monitoring.
+- Operational monitoring of a hosted deployment (see `docs/DEPLOYMENT.md` for how to deploy).
 - End-to-end verification with the complete application.
 
 The implementation and evaluation results documented here describe the

@@ -1,0 +1,3 @@
+# Used by Streamlit Community Cloud and Hugging Face Spaces.
+# Editable install on purpose: the app reads data/sample/ relative to the repository.
+-e .[app,gemini]
