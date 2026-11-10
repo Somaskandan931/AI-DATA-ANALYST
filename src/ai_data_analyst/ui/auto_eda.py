@@ -7,7 +7,8 @@ the small HTML tables, and is otherwise shown with ``st.text``, tables and widge
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
+from html import escape
 from pathlib import Path
 from typing import TypeVar
 
@@ -36,9 +37,10 @@ from ..analysis import (
 )
 from ..chat import SUPPORTED_QUESTIONS, ChatAnswer, ChatError
 from ..ingestion import IngestionError
+from ..models import ColumnProfile
 from ..reporting import ReportError, chart_svg
 from ..security import InMemoryAuditSink
-from . import evidence, formatting, layout
+from . import evidence, layout
 from . import workspace as ws_api
 from .theme import CLASSES, fresh_class
 from .workspace import Workspace, WorkspaceError
@@ -63,11 +65,16 @@ _EXPECTED = (
     ValidationError,
 )
 _T = TypeVar("_T")
-_PROFILE_COLUMNS = (
+_COLUMN_FIELDS = ("name", "inferred_type", "missing_count", "unique_count", "range")
+_COLUMN_LABELS = {
+    "name": "Column",
+    "inferred_type": "Type",
+    "missing_count": "Missing",
+    "unique_count": "Unique",
+    "range": "Range",
+}
+_NUMERIC_FIELDS = (
     "name",
-    "inferred_type",
-    "missing_count",
-    "unique_count",
     "min",
     "max",
     "mean",
@@ -79,11 +86,8 @@ _PROFILE_COLUMNS = (
 )
 # Short display labels keep every header whole inside its column; the data keys above
 # are unchanged, so provenance and tests still speak the same names.
-_PROFILE_LABELS = {
+_NUMERIC_LABELS = {
     "name": "Column",
-    "inferred_type": "Type",
-    "missing_count": "Missing",
-    "unique_count": "Unique",
     "min": "Min",
     "max": "Max",
     "mean": "Mean",
@@ -93,6 +97,8 @@ _PROFILE_LABELS = {
     "q3": "Q3",
     "outlier_count": "Outliers",
 }
+_GROUP_FACTS = ("Total groups", "Groups shown")
+_PREVIEW_ROWS = 10
 
 
 def _guard(action: Callable[[], _T]) -> _T | None:
@@ -217,6 +223,13 @@ def _overview(workspace: Workspace) -> None:
 # ---- profile --------------------------------------------------------------------------------
 
 
+def _range(column: ColumnProfile) -> str:
+    """The first and last observation for a date column; other columns have no range."""
+    if column.inferred_type == "date" and column.min is not None and column.max is not None:
+        return f"{column.min} – {column.max}"
+    return ""
+
+
 def _profile_tab(workspace: Workspace) -> None:
     layout.page_header(
         "Profile",
@@ -224,27 +237,36 @@ def _profile_tab(workspace: Workspace) -> None:
         "Column types, missing values and the first rows, exactly as uploaded.",
     )
     profile = workspace.profile
+    layout.section_label("Columns")
     layout.data_table(
-        (column.model_dump() for column in profile.columns),
-        _PROFILE_COLUMNS,
-        labels=_PROFILE_LABELS,
+        (
+            {
+                "name": column.name,
+                "inferred_type": column.inferred_type,
+                "missing_count": column.missing_count,
+                "unique_count": column.unique_count,
+                "range": _range(column),
+            }
+            for column in profile.columns
+        ),
+        _COLUMN_FIELDS,
+        labels=_COLUMN_LABELS,
     )
-    st.caption(
-        "First rows exactly as uploaded; values keep their original formatting "
-        "instead of the two-decimal display used above."
-    )
-    raw = workspace.ingested.frame.head(20)
-    preview = formatting.frame_from(
-        raw.itertuples(index=False, name=None), [str(name) for name in raw.columns]
-    )
-    date_columns = {column.name for column in profile.columns if column.inferred_type == "date"}
-    st.dataframe(
-        formatting.style_missing(preview),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            name: st.column_config.TextColumn(name, width="medium") for name in date_columns
-        },
+    numeric = [column for column in profile.columns if column.inferred_type in _NUMERIC]
+    if numeric:
+        layout.section_label("Numeric summary")
+        layout.data_table(
+            (column.model_dump() for column in numeric),
+            _NUMERIC_FIELDS,
+            labels=_NUMERIC_LABELS,
+        )
+    layout.section_label("First rows")
+    raw = workspace.ingested.frame.head(_PREVIEW_ROWS)
+    layout.data_table(
+        raw.itertuples(index=False, name=None),
+        [str(name) for name in raw.columns],
+        caption=f"First {_PREVIEW_ROWS} rows, exactly as uploaded.",
+        format_values=False,
     )
 
 
@@ -417,6 +439,16 @@ def _step_form(workspace: Workspace, operation: str) -> AnalysisStep | None:  # 
     return _guard(step) if submitted else None
 
 
+def _group_line(facts: Iterable[tuple[str, str]]) -> str | None:
+    """Collapse the two grouped-aggregation counts into one compact line."""
+    values = dict(facts)
+    total = values.get("Total groups")
+    shown = values.get("Groups shown")
+    if total is None or shown is None:
+        return None
+    return f"{total} groups · {shown} shown"
+
+
 def _results(workspace: Workspace) -> None:
     if not workspace.artifacts:
         st.info("No analyses yet. Run one above or ask a question in the Chat tab.")
@@ -436,8 +468,11 @@ def _results(workspace: Workspace) -> None:
                 method = report.methods[result.step]
                 for warning in artifact.warnings:
                     st.warning(warning)
+                group_line = _group_line(result.facts)
+                if group_line is not None:
+                    st.html(f'<p class="{CLASSES["mono"]} fn-result-line">{escape(group_line)}</p>')
                 for label, value in result.facts:
-                    if label == "Rows used":  # shown once, inside "Computed from"
+                    if label == "Rows used" or label in _GROUP_FACTS:
                         continue
                     st.text(f"{label}: {value}")
                 parameters = ", ".join(f"{name}={value}" for name, value in method.parameters)

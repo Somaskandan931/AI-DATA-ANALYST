@@ -260,6 +260,7 @@ def test_tables_scroll_keep_semantics_and_align_numbers() -> None:
     stylesheet = css.build_css()
 
     assert ".fn-table-scroll" in stylesheet
+    assert ".fn-table-scroll--dense" in stylesheet
     assert "overflow-x: auto" in stylesheet
     assert "position: sticky" in stylesheet
     assert "font-variant-numeric: tabular-nums" in stylesheet
@@ -289,21 +290,49 @@ def test_hero_steps_share_one_rule_and_start_at_the_headline() -> None:
     assert "padding-inline: 0" in _block(stylesheet, ".fn-empty-hero .fn-hero-steps {")
 
 
-def test_result_rule_uses_the_card_rule_weight() -> None:
+def test_result_rule_uses_the_fine_rule_weight() -> None:
+    # The rule above a result block is a hairline so it does not double up with the
+    # expander border (UI fix, item 7); only the evidence card keeps the strong weight.
     stylesheet = css.build_css()
 
-    assert stylesheet.count("height: var(--fn-card-rule-weight);") == 2
-    # Scoped to the arrival rule: the spinner bar legitimately keeps the strong weight,
-    # so the earlier whole-stylesheet negative assertion was too broad.
+    assert stylesheet.count("height: var(--fn-card-rule-weight);") == 1
     result_rule = re.search(
         r"\.fn-result-marker\.fn-fresh\s*\)::before \{(?P<body>[^}]*)\}", stylesheet
     )
     assert result_rule is not None
-    assert "height: var(--fn-card-rule-weight);" in result_rule.group("body")
+    assert "height: var(--fn-rule-weight);" in result_rule.group("body")
+    assert "height: var(--fn-card-rule-weight);" not in result_rule.group("body")
     assert (
         _block(stylesheet, ".fn-evidence-card::before").count("height: var(--fn-card-rule-weight);")
         == 1
     )
+
+
+def test_multiselect_chips_are_paper_tinted_with_a_plain_remove_control() -> None:
+    stylesheet = css.build_css()
+    chip = _block(stylesheet, '[data-testid="stMultiSelectTagsContainer"] [data-tag] {')
+    remove = _block(stylesheet, '[data-testid="stMultiSelectTagsContainer"] [data-tag] button {')
+
+    assert "background: var(--fn-secondary-surface) !important" in chip
+    assert "color: var(--fn-ink) !important" in chip
+    assert "border: var(--fn-rule-weight) solid var(--fn-rule) !important" in chip
+    assert "color: var(--fn-ink-muted) !important" in remove
+    assert "width: 1rem" in remove and "height: 1rem" in remove
+
+
+def test_multiselect_chip_text_and_remove_control_meet_contrast() -> None:
+    # The chip moved off the solid persimmon fill; ink on the paper tint is about 12:1
+    # and the muted remove control still clears 4.5:1 (UI fix, item 5).
+    assert _contrast(PALETTE.ink, PALETTE.secondary_surface) >= 4.5
+    assert _contrast(PALETTE.ink_muted, PALETTE.secondary_surface) >= 4.5
+
+
+def test_inspector_rows_start_at_the_section_heading() -> None:
+    # The browser gives every <dl> 32px of padding, which pushed labels and values
+    # right of the heading (UI fix, item 8).
+    block = _block(css.build_css(), ".fn-inspector .fn-inspector-list,")
+
+    assert "padding: 0;" in block
 
 
 def test_quiet_replace_action_has_an_underline_icon_and_focus_state() -> None:

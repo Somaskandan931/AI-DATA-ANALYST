@@ -236,7 +236,6 @@ def _select_database() -> Path | None:
             return None
 
         st.session_state["sql_database_name"] = "Electricity Demand Sample"
-        st.markdown("**Selected database:** Electricity Demand Sample")
         return sample_path
 
     limits = LimitsConfig.from_env()
@@ -601,7 +600,6 @@ def render() -> None:
         with rail:
             layout.inspector(
                 layout.sql_inspector_sections(
-                    database_name=_database_name(),
                     tables=(
                         tuple((table.name, len(table.columns)) for table in schema.tables)
                         if schema is not None

@@ -71,14 +71,17 @@ def test_auto_eda_inspector_has_its_fields_and_human_limits() -> None:
 
 
 def test_sql_inspector_omits_eda_fields_and_shows_query_limits() -> None:
+    # The rail's DATABASE section is the single place that names the database, so the
+    # Inspector no longer repeats it (UI fix, item 6).
     sections = layout.sql_inspector_sections(
-        database_name="Electricity Demand Sample",
         tables=(("electricity_demand", 6),),
         limits=LimitsConfig(),
     )
     html = layout.render_inspector(sections)
 
-    assert "Selected database" in html and "Electricity Demand Sample" in html
+    assert "Selected database" not in html
+    assert "Electricity Demand Sample" not in html
+    assert ">Database<" not in html
     assert "<dt>electricity_demand</dt><dd>6 columns</dd>" in html
     assert "<dt>SQL timeout</dt><dd>5 s</dd>" in html
     assert "<dt>Max execution time</dt><dd>30 s</dd>" in html

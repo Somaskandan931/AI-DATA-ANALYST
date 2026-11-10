@@ -637,6 +637,13 @@ pre,
     text-align: right;
 }
 
+/* Nine statistic columns must fit the canvas at 1440; the narrow gap keeps them in
+   view without changing the preview or the narrower profile table. */
+.fn-table-scroll--dense .fn-table th,
+.fn-table-scroll--dense .fn-table td {
+    padding-inline: var(--fn-space-2);
+}
+
 /* The first column stays in view while the rest scrolls; an opaque background keeps
    the moving cells from showing through it. */
 .fn-table thead th:first-child,
@@ -744,8 +751,12 @@ pre,
     text-transform: uppercase;
 }
 
+/* Streamlit's markdown container indents every dl by 2rem with a class+element
+   selector, so the inspection list resets it from a more specific scope. */
+.fn-inspector .fn-inspector-list,
 .fn-inspector-list {
     margin: 0;
+    padding: 0;
 }
 
 .fn-inspector-row {
@@ -884,6 +895,15 @@ pre,
     display: none;
 }
 
+/* The grouped-aggregation counts share one compact line instead of two fact rows. */
+.fn-result-line {
+    margin: 0 0 var(--fn-space-2);
+    color: var(--fn-ink-muted);
+    font-family: var(--fn-font-mono);
+    font-size: var(--fn-text-xs);
+    letter-spacing: 0.02em;
+}
+
 @media (max-width: 640px) {
     [data-testid="stHorizontalBlock"]:has(.fn-shell-marker) {
         flex-direction: column-reverse;
@@ -1010,15 +1030,44 @@ pre,
     opacity: 1;
 }
 
-/* Streamlit 1.66 paints multiselect tags with the theme primary; the white-on-
-   persimmon pair is checked for at least 4.5:1, so only shape and type change. */
+/* Streamlit 1.66 paints multiselect tags with the theme primary; Field Notes uses a
+   paper-tinted chip instead, with ink text and a small muted remove control. Ink on
+   the secondary surface is about 12:1 and the remove control about 5.2:1. */
 [data-testid="stMultiSelectTagsContainer"] [data-tag] {
+    border: var(--fn-rule-weight) solid var(--fn-rule) !important;
     border-radius: var(--fn-radius) !important;
+    background: var(--fn-secondary-surface) !important;
+    color: var(--fn-ink) !important;
     font-family: var(--fn-font-ui);
 }
 
 [data-testid="stMultiSelectTagsContainer"] [data-tag] span {
+    color: var(--fn-ink) !important;
     font-weight: 500;
+}
+
+[data-testid="stMultiSelectTagsContainer"] [data-tag] button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1rem;
+    height: 1rem;
+    margin-inline-start: 0.15rem;
+    padding: 0;
+    border: 0;
+    background: transparent;
+    color: var(--fn-ink-muted) !important;
+    cursor: pointer;
+}
+
+[data-testid="stMultiSelectTagsContainer"] [data-tag] button:hover,
+[data-testid="stMultiSelectTagsContainer"] [data-tag] button:focus-visible {
+    color: var(--fn-ink) !important;
+}
+
+[data-testid="stMultiSelectTagsContainer"] [data-tag] button svg {
+    width: 0.55rem;
+    height: 0.55rem;
 }
 
 /* ---- motion ------------------------------------------------------------------------- */
@@ -1172,7 +1221,7 @@ pre,
     top: 0;
     right: 0;
     left: 0;
-    height: var(--fn-card-rule-weight);
+    height: var(--fn-rule-weight);
     background: var(--fn-ink);
     transform-origin: left center;
     animation: fn-draw-rule var(--fn-motion-arrival) var(--fn-ease) both;

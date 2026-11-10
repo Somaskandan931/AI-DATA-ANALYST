@@ -97,9 +97,14 @@ def data_table(
     *,
     labels: Mapping[str, str] | Sequence[str] | None = None,
     caption: str | None = None,
+    format_values: bool = True,
 ) -> None:
-    """A small escaped HTML table; three columns or fewer become a stacked key/value list."""
-    st.html(tables.render_data(rows, columns, labels=labels, caption=caption))
+    """A small escaped HTML table; a single row becomes a stacked key/value list."""
+    st.html(
+        tables.render_data(
+            rows, columns, labels=labels, caption=caption, format_values=format_values
+        )
+    )
 
 
 def computed_from(rows: Sequence[tuple[str, str]], *, label: str = "Computed from") -> None:
@@ -243,13 +248,12 @@ def auto_eda_inspector_sections(
 
 def sql_inspector_sections(
     *,
-    database_name: str,
     tables: Sequence[tuple[str, int]] = (),
     limits: LimitsConfig | None = None,
 ) -> tuple[InspectorSection, ...]:
-    """The chosen database, its available tables and the query limits only."""
+    """The available tables and the query limits; the rail already names the database."""
     active = LimitsConfig.from_env() if limits is None else limits
-    sections = [InspectorSection("Database", rows=(("Selected database", database_name),))]
+    sections: list[InspectorSection] = []
     if tables:
         sections.append(
             InspectorSection(

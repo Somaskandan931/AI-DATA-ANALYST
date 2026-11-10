@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import csv
 import re
+from html import escape
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,7 @@ from ai_data_analyst.sql_agent.errors import LLMConfigurationError  # noqa: E402
 from ai_data_analyst.ui import sql_analyst  # noqa: E402
 
 APP = Path(__file__).resolve().parents[2] / "app.py"
+SAMPLE_PATH = Path(__file__).resolve().parents[2] / "data" / "sample" / "electricity_demand.csv"
 
 _VISIBLE_TYPES = (
     "markdown",
@@ -126,29 +129,65 @@ def test_overview_and_inspector_show_provenance() -> None:
     assert "SQL audit events" not in inspector
 
 
-def test_profile_uses_one_html_table_and_keeps_only_the_preview_as_a_dataframe() -> None:
+def test_profile_splits_columns_and_numeric_summary_and_previews_html_rows() -> None:
+    # The profile is now two HTML tables (Columns and Numeric summary) and the preview
+    # is an HTML table too, so no st.dataframe remains on the Profile tab
+    # (UI fix, items 2 and 3).
     at = _sample(_started())
-    profile_table = next(h.value for h in at.html if '<table class="fn-table">' in h.value)
+    tables = [h.value for h in at.html if '<table class="fn-table">' in h.value]
 
-    assert '<th scope="col">Column</th>' in profile_table
-    assert '<th scope="col" class="fn-num">Mean</th>' in profile_table
-    assert '<th scope="col" class="fn-num">Outliers</th>' in profile_table
-    assert '<th scope="row">demand_mwh</th>' in profile_table
-    assert '<td class="fn-num">1,121.20</td>' in profile_table
-    assert len(at.dataframe) == 1
-    assert any(caption.value.startswith("First rows exactly as uploaded") for caption in at.caption)
+    columns_table = next(table for table in tables if '<th scope="col">Range</th>' in table)
+    assert '<th scope="col">Column</th>' in columns_table
+    assert '<th scope="col">Type</th>' in columns_table
+    assert '<th scope="col" class="fn-num">Missing</th>' in columns_table
+    assert '<th scope="col" class="fn-num">Unique</th>' in columns_table
+    assert "2025-01-01 – 2025-04-30" in columns_table
+    assert "Mean" not in columns_table
+
+    numeric_table = next(
+        table for table in tables if '<th scope="col" class="fn-num">Outliers</th>' in table
+    )
+    for label in ("Min", "Max", "Mean", "Median", "Std", "Q1", "Q3"):
+        assert f'<th scope="col" class="fn-num">{label}</th>' in numeric_table
+    assert '<th scope="row">demand_mwh</th>' in numeric_table
+    assert '<th scope="row">temperature_c</th>' in numeric_table
+    assert '<th scope="row">date</th>' not in numeric_table
+    assert '<td class="fn-num">1,121.20</td>' in numeric_table
+
+    preview = next(table for table in tables if "First 10 rows, exactly as uploaded." in table)
+    assert preview.count('<th scope="row">') == 10
+    assert len(at.dataframe) == 0
+
+
+def test_profile_preview_matches_the_raw_csv_cells() -> None:
+    # Compare the preview against the sample bytes, not another formatted view: the
+    # uploaded text "906.3"/"1186.7" must survive unchanged (UI fix, item 1).
+    at = _sample(_started())
+    preview = next(h.value for h in at.html if "First 10 rows, exactly as uploaded." in h.value)
+    with SAMPLE_PATH.open(newline="", encoding="utf-8") as handle:
+        rows = list(csv.reader(handle))[:11]  # header and the first ten data rows
+
+    for row in rows:
+        for cell in row:
+            assert f">{escape(cell)}<" in preview
+
+    assert ">906.3<" in preview and ">1186.7<" in preview
+    assert "906.30" not in preview
+    assert "1,186.70" not in preview
 
 
 def test_sql_inspector_names_the_database_tables_and_query_limits() -> None:
     at = _started()
     inspector = next(
-        h.value for h in at.html if "fn-inspector" in h.value and "Selected database" in h.value
+        h.value for h in at.html if "fn-inspector" in h.value and "fn-inspector-row" in h.value
     )
 
-    assert "Electricity Demand Sample" in inspector
     assert "<dt>electricity_demand</dt><dd>6 columns</dd>" in inspector
     assert "<dt>SQL timeout</dt><dd>5 s</dd>" in inspector
     assert "<dt>Max result rows</dt><dd>1,000</dd>" in inspector
+    # The rail's DATABASE section already names the database (UI fix, item 6).
+    assert "Selected database" not in inspector
+    assert "Electricity Demand Sample" not in inspector
     assert "Dataset fingerprint" not in inspector
     assert "Cleaning" not in inspector
     assert "<dt>Profile</dt>" not in inspector
@@ -227,7 +266,9 @@ def test_unsupported_question_is_explained_not_an_error() -> None:
     assert any("Supported questions" in t.value for t in at.text)
 
 
-def test_grouped_aggregation_uses_the_stacked_key_value_layout() -> None:
+def test_grouped_aggregation_uses_the_table_and_one_compact_count_line() -> None:
+    # Several group rows keep the standard table, and the two count facts collapse into
+    # one compact line (UI fix, item 4).
     at = _sample(_started())
     next(s for s in at.selectbox if s.label == "Analysis").select("grouped_aggregation").run()
     next(m for m in at.multiselect if m.label == "Group by (up to 3)").select("region")
@@ -235,25 +276,41 @@ def test_grouped_aggregation_uses_the_stacked_key_value_layout() -> None:
     next(b for b in at.button if b.label == "Run").click().run()
 
     assert not at.exception
-    stacked = next(h.value for h in at.html if "fn-kv-list" in h.value)
-    assert "<table" not in stacked
-    assert 'class="fn-kv-title">East<' in stacked
-    assert "<dt>mean of demand_mwh</dt>" in stacked
-    assert '<dd class="fn-num">879.76</dd>' in stacked
+    table = next(h.value for h in at.html if "Aggregations of demand_mwh" in h.value)
+    assert '<table class="fn-table">' in table
+    assert "fn-kv-list" not in table
+    assert '<th scope="row">East</th>' in table
+    assert '<td class="fn-num">879.76</td>' in table
+
+    line = next(h.value for h in at.html if "fn-result-line" in h.value)
+    assert "4 groups · 4 shown" in line
+    assert not any(t.value.startswith("Total groups:") for t in at.text)
+    assert not any(t.value.startswith("Groups shown:") for t in at.text)
 
 
-def test_summary_statistics_keep_the_wide_html_table() -> None:
+def test_summary_statistics_with_several_columns_keep_the_html_table() -> None:
     at = _sample(_started())
     next(s for s in at.selectbox if s.label == "Analysis").select("summary_stats").run()
-    next(m for m in at.multiselect if m.label == "Numeric columns").select("demand_mwh")
+    numeric = next(m for m in at.multiselect if m.label == "Numeric columns")
+    numeric.select("demand_mwh")
+    numeric.select("temperature_c")
     next(b for b in at.button if b.label == "Run").click().run()
 
     assert not at.exception
     table = next(h.value for h in at.html if "Statistics over non-missing values" in h.value)
+    assert '<table class="fn-table">' in table
     assert '<th scope="col">Column</th>' in table
     assert '<th scope="col" class="fn-num">Mean</th>' in table
     assert '<th scope="row">demand_mwh</th>' in table
+    assert '<th scope="row">temperature_c</th>' in table
     assert '<td class="fn-num">1,121.20</td>' in table
+
+
+def test_sql_page_names_the_database_once() -> None:
+    # The rail's DATABASE section is the only place the human database name appears;
+    # the old "Selected database:" line and Inspector row are gone (UI fix, item 6).
+    at = _started()
+    assert _visible_text(at).count("Electricity Demand Sample") == 1
 
 
 def test_no_internal_jargon_is_visible_in_empty_loaded_and_error_states(monkeypatch) -> None:
