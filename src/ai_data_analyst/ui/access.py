@@ -34,8 +34,8 @@ def require_access() -> None:
     if not expected or st.session_state.get(_AUTHENTICATED_KEY):
         return
 
-    st.title("AI Data Analyst Agent")
-    st.caption("This deployment is password protected.")
+    st.title("AIDA")
+    st.caption("AI Data Analyst Agent. This deployment is password protected.")
     entered = st.text_input("Password", type="password", key="access_password")
     if entered:
         if password_matches(entered, expected):

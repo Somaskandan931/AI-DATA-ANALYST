@@ -1,6 +1,6 @@
-# AI Data Analyst Agent
+# AIDA: AI Data Analyst Agent
 
-A data-analysis assistant with two workspaces in one Streamlit app:
+AIDA is a data-analysis assistant with two workspaces in one Streamlit app:
 
 - **Auto-EDA** takes a CSV and produces a profile, a controlled analysis, charts, a report and
   chat answers, all computed by deterministic code.
