@@ -137,7 +137,7 @@ def test_history_is_bounded(workspace: Workspace) -> None:
     assert len(workspace.history) == ws_api.MAX_HISTORY
 
 
-# ---- audit events (shared contract with M2/Prathin) -----------------------------------------
+# ---- audit events (shared contract with M2) -----------------------------------------
 
 
 def _types(sink: InMemoryAuditSink) -> list[tuple[str, str]]:

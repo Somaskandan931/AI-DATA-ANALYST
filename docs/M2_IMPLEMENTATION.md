@@ -1,5 +1,5 @@
 
-# M2 Implementation and Handover Guide
+# SQL Analyst (M2): Implementation Guide
 
 ## 1. Overview
 
