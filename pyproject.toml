@@ -41,7 +41,7 @@ Changelog = "https://github.com/Somaskandan931/AI_Data_Analyst/blob/main/CHANGEL
 
 [project.optional-dependencies]
 app = [
-  "streamlit>=1.38",
+  "streamlit>=1.66",
   "plotly>=5.24",
   "python-dotenv>=1.0",
 ]

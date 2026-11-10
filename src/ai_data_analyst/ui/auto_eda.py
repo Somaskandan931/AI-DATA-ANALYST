@@ -40,6 +40,7 @@ from ..ingestion import IngestionError
 from ..reporting import ReportError, chart_svg
 from ..security import InMemoryAuditSink
 from . import workspace as ws_api
+from .theme import apply_theme, fresh_class
 from .workspace import Workspace, WorkspaceError
 
 SAMPLE_PATH = Path(__file__).resolve().parents[3] / "data" / "sample" / "electricity_demand.csv"
@@ -90,9 +91,30 @@ def _audit() -> InMemoryAuditSink:
     return sink
 
 
+def _empty_state() -> None:
+    """The first screen before a dataset exists; animate only on its first appearance."""
+    fresh = fresh_class("auto-eda-empty", None)
+    st.html(
+        f"""
+        <section class="fn-empty-hero {fresh}" aria-labelledby="fn-wordmark">
+            <p class="fn-wordmark" id="fn-wordmark">Field Notes</p>
+            <h2 class="fn-hero-title">A quiet workspace for your data.</h2>
+            <p class="fn-hero-purpose">
+                Profile, clean, and explain a dataset while keeping every number
+                traceable to its source.
+            </p>
+        </section>
+        """
+    )
+
+
 def _upload_section() -> Workspace | None:
+    use_sample = st.button(
+        "Use the sample dataset",
+        type="primary",
+        disabled=not SAMPLE_PATH.exists(),
+    )
     uploaded = st.file_uploader("Upload a CSV file", type=["csv"])
-    use_sample = st.button("Use the sample dataset", disabled=not SAMPLE_PATH.exists())
     if uploaded is not None and st.session_state.get(_UPLOAD_KEY) != uploaded.file_id:
         loaded = _guard(lambda: ws_api.load_upload(uploaded.getvalue(), uploaded.name, _audit()))
         if loaded is not None:
@@ -383,8 +405,12 @@ def _report_tab(workspace: Workspace) -> None:
 
 def render() -> None:
     """Draw the Auto-EDA workspace."""
+    apply_theme()
+    hero = st.empty()
     workspace = _upload_section()
     if workspace is None:
+        with hero.container():
+            _empty_state()
         st.info("Upload a CSV file or use the sample dataset to begin.")
         return
     tabs = st.tabs(["Profile", "Cleaning", "Analysis", "Chat", "Report"])
