@@ -1,0 +1,12 @@
+[server]
+headless = true
+# Matches the shared 25 MB upload default (AIDA_MAX_UPLOAD_BYTES), so oversized files are
+# rejected in the browser before they reach the app. Raise both together.
+maxUploadSize = 25
+enableXsrfProtection = true
+
+[browser]
+gatherUsageStats = false
+
+[client]
+toolbarMode = "viewer"

@@ -1,15 +1,19 @@
 # Contributing and collaboration
 
-Two collaborators (Somaskandan and Nishi) build one platform from two independent modules.
+Somaskandan, Nishi and Prathin build one platform from two independent modules plus shared contracts.
 
-## Proposed ownership (adjust together before P1)
+## Module areas
 
-| Area | Paths | Owner (proposed)                                           |
-| --- | --- |------------------------------------------------------------|
-| M1 Auto-EDA | `ingestion/`, `profiling/`, `analysis/`, `visualization/`, `reporting/`, `chat/` | Somaskandan                                                |
-| M2 Text-to-SQL | `sql_agent/`, SQL benchmark in `data/expected/` | Nishi                                                      |
-| Shared contracts | `models.py`, `security/`, `evaluation/` | Prathin                                                        |
-| UI integration | `ui/`, `app.py` | Whoever finishes their module first; reviewed by the other |
+| Area | Paths |
+| --- | --- |
+| M1 Auto-EDA | `ingestion/`, `profiling/`, `analysis/`, `visualization/`, `reporting/`, `chat/`, `ui/auto_eda.py` |
+| M2 Text-to-SQL | `sql_agent/`, `ui/sql_analyst.py`, SQL benchmark in `data/expected/` |
+| Shared contracts | `models.py`, `security/`, `evaluation/` |
+| App shell and deployment | `app.py`, `ui/access.py`, `Dockerfile`, `requirements.txt`, `.streamlit/` |
+
+Each area has one owner who reviews changes to it; agree owners in the repository settings
+(for example a `CODEOWNERS` file) rather than in this document. A change that touches another
+area gets that area's owner as reviewer.
 
 `M1` and `M2` must not import each other. They share only `models.py`, `security/` and `evaluation/`.
 
@@ -26,7 +30,8 @@ Two collaborators (Somaskandan and Nishi) build one platform from two independen
 2. `ruff check .`, `ruff format --check .`, `mypy` and `pytest` pass locally.
 3. No credentials, raw sensitive data, or generated databases committed.
 4. Docs updated if behavior or a contract changed.
-5. Security-relevant changes (anything in `security/` or `sql_agent/`) include a test for the unsafe case.
+5. Security-relevant changes (anything in `security/`, `sql_agent/` or `ui/access.py`) include a test for the unsafe case.
+6. Deployment changes (`Dockerfile`, `requirements.txt`, `.streamlit/`) keep `docs/DEPLOYMENT.md` accurate.
 
 ## Rules that are never relaxed
 

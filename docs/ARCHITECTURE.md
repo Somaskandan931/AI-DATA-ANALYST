@@ -15,9 +15,9 @@ The UI calls application services. Application services orchestrate domain modul
 - `security/`: common limits, policy types, and audit events.
 - `evaluation/`: benchmark fixtures, scoring, and report generation.
 - `reporting/`: reproducible report assembly.
-- `ui/`: Streamlit pages and widgets only.
+- `ui/`: Streamlit pages and widgets only, including the optional password gate (`ui/access.py`, enabled by `APP_PASSWORD`).
 
-## Key interfaces (planned)
+## Key interfaces
 
 - `DatasetProfile`: versioned structured profile of a dataset.
 - `AnalysisPlan`: typed list of allow-listed operations and validated parameters.
@@ -201,4 +201,4 @@ computes on the filtered rows. It is declarative only; no expression is parsed o
 
 ### Not yet implemented
 
-The SQL Analyst workspace belongs to M2.
+Audit events inside the SQL pipeline (`sql_agent/`). The SQL Analyst workspace (`ui/sql_analyst.py`) is implemented.
