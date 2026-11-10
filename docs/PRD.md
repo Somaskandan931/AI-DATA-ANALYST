@@ -3,9 +3,8 @@
 ## 1. Product overview
 
 **Product name:** AIDA (AI Data Analyst Agent)  
-**Version:** 0.1 (foundation draft)  
+**Version:** 0.1  
 **Type:** Standalone application with two integrated modules  
-**Collaborators:** Somaskandan and Nishi  
 **Primary users:** Students, analysts, researchers, and developers who need to explore tabular data or query a database without writing every operation manually.
 
 ### Problem
@@ -146,12 +145,12 @@ Targets for accuracy and latency will be set after a baseline run on the selecte
 ## 11. Milestones
 
 - **P0 — Foundation (complete):** PRD, architecture, repository scaffold, CI, shared `DatasetProfile` contract, fixed sample dataset with expected values.
-- **P1 — Data ingestion and profiling:** CSV validation, schema, profile JSON, fixture tests.
-- **P2 — Controlled Auto-EDA:** allow-listed operations, charts, report generation.
-- **P3 — Grounded dataset chat:** question routing to computed artifacts and approved operations.
-- **P4 — Safe Text-to-SQL:** schema retrieval, generation, validation, read-only execution.
-- **P5 — Evaluation and integration:** benchmark suite, security tests, latency report, Streamlit integration.
-- **P6 — Release readiness:** documentation, clean setup, reproducibility, limitations, demo.
+- **P1 — Data ingestion and profiling (complete):** CSV validation, schema, profile JSON, fixture tests.
+- **P2 — Controlled Auto-EDA (complete):** allow-listed operations, charts, report generation.
+- **P3 — Grounded dataset chat (complete):** question routing to computed artifacts and approved operations.
+- **P4 — Safe Text-to-SQL (complete):** schema retrieval, generation, validation, read-only execution.
+- **P5 — Evaluation and integration (largely complete):** benchmark suite, security tests, latency report, Streamlit integration. Open: SQL pipeline audit events and wider SQL accuracy measurement.
+- **P6 — Release readiness (in progress):** documentation, clean setup, reproducibility, limitations, demo.
 
 ## 12. Decisions to keep configurable
 

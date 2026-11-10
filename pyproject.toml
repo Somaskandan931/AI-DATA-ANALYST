@@ -7,6 +7,16 @@ build-backend = "setuptools.build_meta"
 name = "ai-data-analyst-agent"
 version = "0.1.0"
 description = "Grounded Auto-EDA and safe natural-language-to-SQL analytics agent"
+authors = [{ name = "Somaskandan" }, { name = "Nishi" }, { name = "Prathin" }]
+keywords = ["data-analysis", "eda", "text-to-sql", "llm", "streamlit", "explainable", "sqlite"]
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Intended Audience :: Science/Research",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Scientific/Engineering :: Information Analysis",
+]
 readme = "README.md"
 license = "MIT"
 license-files = ["LICENSE"]
@@ -23,6 +33,11 @@ dependencies = [
   "sqlalchemy>=2.0",
   "sqlglot>=30.13",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Somaskandan931/AI_Data_Analyst"
+Issues = "https://github.com/Somaskandan931/AI_Data_Analyst/issues"
+Changelog = "https://github.com/Somaskandan931/AI_Data_Analyst/blob/main/CHANGELOG.md"
 
 [project.optional-dependencies]
 app = [
