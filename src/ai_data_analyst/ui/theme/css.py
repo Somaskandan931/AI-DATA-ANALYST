@@ -904,6 +904,73 @@ pre,
     letter-spacing: 0.02em;
 }
 
+/* ---- charts -------------------------------------------------------------------------- */
+
+.fn-chart-marker {
+    display: none;
+}
+
+[data-testid="stVerticalBlock"]:has(> [data-testid="stElementContainer"] .fn-chart-marker) {
+    max-width: var(--fn-prose);
+    margin: var(--fn-space-4) 0 var(--fn-space-2);
+}
+
+.fn-chart-title {
+    margin: 0;
+    color: var(--fn-ink);
+    font-family: var(--fn-font-heading);
+    font-size: var(--fn-text-lg);
+    line-height: 1.25;
+}
+
+.fn-chart-subtitle {
+    margin: var(--fn-space-1) 0 var(--fn-space-2);
+    color: var(--fn-ink-muted);
+    font-size: var(--fn-text-sm);
+}
+
+.fn-chart-caption {
+    margin: var(--fn-space-1) 0 0;
+    color: var(--fn-ink-muted);
+    font-size: var(--fn-text-xs);
+    letter-spacing: 0.02em;
+}
+
+.fn-chart-data {
+    margin-top: var(--fn-space-2);
+}
+
+.fn-chart-data summary {
+    color: var(--fn-ink-muted);
+    font-family: var(--fn-font-mono);
+    font-size: var(--fn-text-xs);
+    cursor: pointer;
+}
+
+.fn-chart-data summary:hover {
+    color: var(--fn-ink);
+}
+
+.fn-chart-data .fn-table-scroll {
+    margin-top: var(--fn-space-2);
+}
+
+.fn-visually-hidden {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0 0 0 0);
+    white-space: nowrap;
+    border: 0;
+}
+
+[data-testid="stPlotlyChart"] {
+    max-width: 100%;
+}
+
 @media (max-width: 640px) {
     [data-testid="stHorizontalBlock"]:has(.fn-shell-marker) {
         flex-direction: column-reverse;
@@ -1151,7 +1218,10 @@ pre,
     @media (prefers-reduced-motion: no-preference) {
         .fn-page-heading,
         .fn-evidence-body,
-        [data-testid="stExpander"] {
+        [data-testid="stExpander"],
+        [data-testid="stVerticalBlock"]:has(
+            > [data-testid="stElementContainer"] .fn-chart-marker
+        ) {
             animation-name: fn-rise-in;
             animation-duration: var(--fn-motion-standard);
             animation-timing-function: var(--fn-ease);
@@ -1203,6 +1273,14 @@ pre,
 .fn-fresh .fn-source-chip {
     animation: fn-fade-in var(--fn-motion-standard) var(--fn-ease)
         calc(var(--fn-motion-arrival) / 2) both;
+}
+
+/* A chart inside a freshly produced result rides the result's single arrival. */
+.fn-fresh
+    [data-testid="stVerticalBlock"]:has(
+        > [data-testid="stElementContainer"] .fn-chart-marker
+    ) {
+    animation: none;
 }
 
 /* The analysis result marker is a zero-size span; its block carries the arrival. */

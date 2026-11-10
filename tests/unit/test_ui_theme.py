@@ -119,6 +119,9 @@ def test_scales_and_class_vocabulary_are_explicit() -> None:
         "inspector_row": "fn-inspector-row",
         "mono": "fn-mono",
         "fingerprint": "fn-fingerprint",
+        # Charts add a zero-size marker so CSS can style and animate their container
+        # (ui/charts branch).
+        "chart_marker": "fn-chart-marker",
     }
 
 

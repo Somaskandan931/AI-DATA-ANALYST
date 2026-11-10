@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import csv
+import json
 import re
 from html import escape
 from pathlib import Path
@@ -288,6 +289,31 @@ def test_grouped_aggregation_uses_the_table_and_one_compact_count_line() -> None
     assert "4 groups · 4 shown" in line
     assert not any(t.value.startswith("Total groups:") for t in at.text)
     assert not any(t.value.startswith("Groups shown:") for t in at.text)
+
+
+def test_a_chart_result_is_drawn_with_plotly_not_an_image() -> None:
+    # The app renders chart specs with Plotly (UI charts branch); the downloadable report
+    # and reporting/ keep their standalone SVG (asserted in test_reporting).
+    at = _sample(_started())
+    next(s for s in at.selectbox if s.label == "Analysis").select("grouped_aggregation").run()
+    next(m for m in at.multiselect if m.label == "Group by (up to 3)").select("region")
+    next(s for s in at.selectbox if s.label == "Value column").select("demand_mwh")
+    next(b for b in at.button if b.label == "Run").click().run()
+
+    assert not at.exception
+    (chart,) = at.get("plotly_chart")
+    spec = json.loads(chart.proto.spec)
+    assert spec["data"][0]["type"] == "bar"
+    assert spec["data"][0]["orientation"] == "h"
+    assert spec["layout"]["height"] == 300
+    assert json.loads(chart.proto.config) == {"displayModeBar": False}
+    assert not at.get("image")
+
+    head = next(h.value for h in at.html if "fn-chart-title" in h.value)
+    assert "Mean of demand_mwh by region" in head
+    details = next(h.value for h in at.html if "fn-chart-data" in h.value)
+    assert "Chart data" in details and "<table" in details
+    assert '<th scope="row">East</th>' in details
 
 
 def test_summary_statistics_with_several_columns_keep_the_html_table() -> None:
