@@ -1,8 +1,8 @@
 """Streamlit page for the Auto-EDA workspace (APP-01).
 
 Pages hold widgets only; every action is a call into :mod:`ai_data_analyst.ui.workspace`.
-Text that came from the uploaded file (column names, values) is shown with ``st.text``,
-tables and widgets, never through Markdown or HTML, so it cannot become markup.
+Text that came from the uploaded file (column names, values) is escaped before it enters
+the small HTML tables, and is otherwise shown with ``st.text``, tables and widgets.
 """
 
 from __future__ import annotations
@@ -198,9 +198,11 @@ def _rail(workspace: Workspace) -> None:
     st.text(f"Questions: {len(workspace.history)}")
     events = workspace.audit.events if isinstance(workspace.audit, InMemoryAuditSink) else ()
     layout.inspector(
-        profile=profile,
-        cleaning_log=workspace.view.log if workspace.view is not None else (),
-        audit_events=events,
+        layout.auto_eda_inspector_sections(
+            profile=profile,
+            cleaning_log=workspace.view.log if workspace.view is not None else (),
+            audit_events=events,
+        )
     )
 
 
@@ -222,22 +224,15 @@ def _profile_tab(workspace: Workspace) -> None:
         "Column types, missing values and the first rows, exactly as uploaded.",
     )
     profile = workspace.profile
-    frame = formatting.frame_from(
-        (column.model_dump() for column in profile.columns), _PROFILE_COLUMNS
+    layout.data_table(
+        (column.model_dump() for column in profile.columns),
+        _PROFILE_COLUMNS,
+        labels=_PROFILE_LABELS,
     )
-    st.dataframe(
-        formatting.style_missing(frame),
-        hide_index=True,
-        width="stretch",
-        column_config={
-            name: st.column_config.TextColumn(
-                _PROFILE_LABELS[name],
-                width="medium" if name in {"name", "min", "max"} else "small",
-            )
-            for name in _PROFILE_COLUMNS
-        },
+    st.caption(
+        "First rows exactly as uploaded; values keep their original formatting "
+        "instead of the two-decimal display used above."
     )
-    st.caption("First rows exactly as uploaded")
     raw = workspace.ingested.frame.head(20)
     preview = formatting.frame_from(
         raw.itertuples(index=False, name=None), [str(name) for name in raw.columns]
@@ -456,7 +451,7 @@ def _results(workspace: Workspace) -> None:
                     )
                 )
                 for table in result.tables:
-                    layout.table(table.rows, table.headers, caption=table.caption)
+                    layout.data_table(table.rows, table.headers, caption=table.caption)
                 for position in result.chart_indices:
                     st.image(chart_svg(report.charts[position]))
                 if st.button("Remove this analysis", key=f"remove_{result.step}"):
@@ -468,7 +463,7 @@ def _analysis_tab(workspace: Workspace) -> None:
     layout.page_header(
         "Analysis",
         "Ask a computed question",
-        "Run one allow-listed operation and keep every number traceable to its inputs.",
+        "Run one analysis and keep every number traceable to its inputs.",
     )
     operation = st.selectbox("Analysis", _OPERATIONS)
     step = _step_form(workspace, operation)

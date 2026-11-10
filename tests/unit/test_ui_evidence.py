@@ -75,7 +75,11 @@ def test_missing_fields_have_no_value_or_interpretation() -> None:
     assert [card.value for card in view.cards] == [None, None, None, None]
     assert [card.interpretation for card in view.cards] == [None, None, None, None]
     rendered = render_evidence_view(view)
-    assert rendered.count("Not available") >= 4
+    # Missing values already show a dim dash; an "interpretation not available" line
+    # repeated the absence four times and used internal filler wording.
+    assert rendered.count('class="fn-evidence-value fn-evidence-value--missing"') == 4
+    assert rendered.count("–") >= 4
+    assert "Not available" not in rendered
     assert 'class="fn-footnote"' not in rendered
 
 

@@ -18,7 +18,6 @@ from ..sql_agent.executor import SQLExecutionResult
 from .theme.tokens import CLASSES
 
 _COLUMN_SUMMARY_LIMIT: Final = 12
-_MISSING_NOTE: Final = "Interpretation not available."
 _MISSING_VALUE: Final = "–"
 
 
@@ -87,7 +86,7 @@ def _maybe_count(value: int | None) -> str | None:
 
 
 def _fingerprint(value: str | None) -> tuple[str, str]:
-    return ("Dataset fingerprint", value or "Not available")
+    return ("Dataset fingerprint", value or _MISSING_VALUE)
 
 
 def overview_fields(profile: DatasetProfile, source_name: str | None = None) -> OverviewFields:
@@ -172,7 +171,7 @@ def interpret_duplicates(fields: OverviewFields) -> str | None:
 
 def _summarise_columns(columns: tuple[tuple[str, str], ...]) -> str:
     if not columns:
-        return "Not available"
+        return "No columns."
     shown = [f"{name} ({kind})" for name, kind in columns[:_COLUMN_SUMMARY_LIMIT]]
     extra = len(columns) - _COLUMN_SUMMARY_LIMIT
     summary = ", ".join(shown)
@@ -265,7 +264,7 @@ def query_result_view(
         interpretation=interpretation,
         source=EvidenceSource.QUERY_RESULT,
         computed_from=(
-            ("Question", question or "Not available"),
+            ("Question", question or "No question recorded"),
             ("Validated SQL", sql),
             ("Result limit", f"{_count(max_rows)} rows"),
         ),
@@ -303,7 +302,9 @@ def _render_card(
             f'<span class="{CLASSES["highlight"]}">{escape(card.value)}</span></p>'
         )
     if card.interpretation is None:
-        note = f'<p class="{CLASSES["evidence_note"]}">{_MISSING_NOTE}</p>'
+        # A missing value already shows a dim dash; an empty interpretation note would
+        # only repeat that absence in words.
+        note = ""
     else:
         marker = (
             f' <sup class="{CLASSES["footnote"]}">'

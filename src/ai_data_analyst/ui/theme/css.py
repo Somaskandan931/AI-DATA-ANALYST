@@ -35,6 +35,13 @@ from .tokens import (
 
 _FRESH_KEY = "fn_fresh_tokens"
 
+# A static inline SVG mask for the quiet replace action; no data is interpolated into it.
+_REPLACE_ICON = (
+    "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E"
+    "%3Cpath d='M13 8a5 5 0 1 1-1.5-3.5M13 2v3h-3' fill='none' stroke='black' "
+    "stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E"
+)
+
 # A delegated listener is injected once per document; it never runs on a rerun twice.
 _INTERACTION_SCRIPT = """
 <span class="fn-script-anchor" hidden></span>
@@ -51,6 +58,7 @@ _INTERACTION_SCRIPT = """
             decodeURIComponent(link.getAttribute("href").slice(1))
         );
         if (!target || target.tagName.toLowerCase() !== "details") { return; }
+        if (!target.classList.contains("fn-computed-from")) { return; }
         event.preventDefault();
         target.open = true;
         target.classList.remove("fn-pulse");
@@ -76,6 +84,7 @@ _CSS_TEMPLATE = Template(
     --fn-rule: $rule;
     --fn-rule-weight: $rule_weight;
     --fn-rule-weight-strong: $rule_weight_strong;
+    --fn-card-rule-weight: $rule_weight_strong;
     --fn-secondary-surface: $secondary_surface;
     --fn-sage: $sage;
     --fn-sage-text: $sage_text;
@@ -241,7 +250,7 @@ pre,
 .fn-section-head {
     display: flex;
     align-items: center;
-    justify-content: space-between;
+    justify-content: flex-start;
     gap: var(--fn-space-3);
     margin: var(--fn-space-5) 0 var(--fn-space-2);
 }
@@ -289,7 +298,7 @@ pre,
     position: relative;
     max-width: var(--fn-prose);
     border-top: 0;
-    padding: calc(var(--fn-space-3) + var(--fn-rule-weight-strong)) 0 var(--fn-space-4);
+    padding: calc(var(--fn-space-3) + var(--fn-card-rule-weight)) 0 var(--fn-space-4);
 }
 
 /* The ink rule is a pseudo-element so it can draw with a transform without moving
@@ -300,7 +309,7 @@ pre,
     top: 0;
     right: 0;
     left: 0;
-    height: var(--fn-rule-weight-strong);
+    height: var(--fn-card-rule-weight);
     background: var(--fn-ink);
     transform: scaleX(1);
     transform-origin: left center;
@@ -556,6 +565,237 @@ pre,
     }
 }
 
+/* ---- data tables -------------------------------------------------------------------- */
+
+/* The wrapper scrolls, never clips: a full header or value simply moves into reach.
+   The two opaque covers are attached to the local content and hide the two edge
+   shadows until the table actually overflows. */
+.fn-table-scroll {
+    max-width: 100%;
+    margin: var(--fn-space-2) 0 var(--fn-space-4);
+    overflow-x: auto;
+    background:
+        linear-gradient(to right, var(--fn-canvas) 30%, transparent) left center / 2.5rem
+            100% no-repeat local,
+        linear-gradient(to left, var(--fn-canvas) 30%, transparent) right center / 2.5rem
+            100% no-repeat local,
+        radial-gradient(farthest-side at 0 50%, rgba(32, 37, 32, 0.16), transparent) left
+            center / 0.9rem 100% no-repeat scroll,
+        radial-gradient(farthest-side at 100% 50%, rgba(32, 37, 32, 0.16), transparent) right
+            center / 0.9rem 100% no-repeat scroll;
+    background-attachment: local, local, scroll, scroll;
+}
+
+.fn-table {
+    width: max-content;
+    min-width: 100%;
+    border-collapse: collapse;
+    font-size: var(--fn-text-sm);
+    font-variant-numeric: tabular-nums;
+}
+
+.fn-table-caption {
+    padding: 0 0 var(--fn-space-2);
+    color: var(--fn-ink-muted);
+    font-family: var(--fn-font-mono);
+    font-size: var(--fn-text-xs);
+    letter-spacing: 0.04em;
+    text-align: left;
+}
+
+.fn-table th,
+.fn-table td {
+    padding: var(--fn-space-2) var(--fn-space-3);
+    border-bottom: var(--fn-rule-weight) solid var(--fn-rule);
+    text-align: left;
+    vertical-align: baseline;
+    white-space: nowrap;
+}
+
+.fn-table tr > :first-child {
+    padding-inline-start: 0;
+}
+
+.fn-table tr > :last-child {
+    padding-inline-end: 0;
+}
+
+.fn-table thead th {
+    color: var(--fn-ink-muted);
+    font-family: var(--fn-font-mono);
+    font-size: var(--fn-text-xs);
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.fn-table tbody th {
+    font-weight: 500;
+}
+
+.fn-table .fn-num {
+    text-align: right;
+}
+
+/* The first column stays in view while the rest scrolls; an opaque background keeps
+   the moving cells from showing through it. */
+.fn-table thead th:first-child,
+.fn-table tbody th {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    background: var(--fn-canvas);
+}
+
+.fn-table thead th:first-child {
+    z-index: 2;
+}
+
+/* ---- stacked key/value list --------------------------------------------------------- */
+
+.fn-kv-figure {
+    margin: var(--fn-space-2) 0 var(--fn-space-4);
+}
+
+.fn-kv-list {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+    gap: var(--fn-space-3) var(--fn-space-4);
+}
+
+.fn-kv-item {
+    min-width: 0;
+    border-top: var(--fn-rule-weight) solid var(--fn-rule);
+    padding-top: var(--fn-space-2);
+}
+
+.fn-kv-title {
+    margin: 0 0 var(--fn-space-1);
+    font-weight: 500;
+    overflow-wrap: anywhere;
+}
+
+.fn-kv-pairs {
+    margin: 0;
+}
+
+.fn-kv-pair {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--fn-space-2);
+    padding: 0.1rem 0;
+}
+
+.fn-kv-pair dt {
+    min-width: 0;
+    color: var(--fn-ink-muted);
+    font-family: var(--fn-font-mono);
+    font-size: var(--fn-text-xs);
+    overflow-wrap: anywhere;
+}
+
+.fn-kv-pair dd {
+    flex: none;
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    overflow-wrap: anywhere;
+    text-align: right;
+}
+
+.fn-kv-values {
+    margin: 0;
+    padding-inline-start: var(--fn-space-4);
+}
+
+@media (max-width: 480px) {
+    .fn-kv-list {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .fn-kv-pair {
+        align-items: flex-start;
+    }
+}
+
+/* ---- inspector ---------------------------------------------------------------------- */
+
+/* The rail is about 240px wide, so every field stacks its label above a wrapping
+   value; there is no table and nothing scrolls sideways. */
+.fn-inspector {
+    max-width: 100%;
+}
+
+.fn-inspector-section {
+    margin: 0 0 var(--fn-space-4);
+}
+
+.fn-inspector-section:last-child {
+    margin-bottom: 0;
+}
+
+.fn-inspector-title {
+    margin: 0 0 var(--fn-space-1);
+    color: var(--fn-ink-muted);
+    font-family: var(--fn-font-mono);
+    font-size: var(--fn-text-xs);
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+}
+
+.fn-inspector-list {
+    margin: 0;
+}
+
+.fn-inspector-row {
+    padding: var(--fn-space-1) 0;
+    border-top: var(--fn-rule-weight) solid var(--fn-rule);
+}
+
+.fn-inspector-row:first-child {
+    padding-top: 0;
+    border-top: 0;
+}
+
+.fn-inspector-row dt {
+    color: var(--fn-ink-muted);
+    font-family: var(--fn-font-mono);
+    font-size: 0.7rem;
+    letter-spacing: 0.04em;
+    overflow-wrap: anywhere;
+}
+
+.fn-inspector-row dd {
+    margin: 0.1rem 0 0;
+    font-size: var(--fn-text-sm);
+    line-height: 1.45;
+    overflow-wrap: anywhere;
+}
+
+.fn-mono,
+.fn-fingerprint {
+    font-family: var(--fn-font-mono);
+}
+
+.fn-fingerprint {
+    font-size: var(--fn-text-xs);
+    letter-spacing: 0.04em;
+}
+
+.fn-inspector .fn-computed-from {
+    margin-top: var(--fn-space-2);
+}
+
+.fn-inspector .fn-computed-from dl {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+}
+
+.fn-inspector .fn-computed-from dd {
+    margin: 0;
+}
+
 /* ---- empty state -------------------------------------------------------------------- */
 
 .fn-empty-hero {
@@ -595,8 +835,8 @@ pre,
     flex-wrap: wrap;
     margin: var(--fn-space-5) 0 0;
     padding: var(--fn-space-2) 0;
+    padding-inline: 0;
     border-top: var(--fn-rule-weight) solid var(--fn-rule);
-    border-bottom: var(--fn-rule-weight) solid var(--fn-rule);
     list-style: none;
 }
 
@@ -613,7 +853,17 @@ pre,
 }
 
 .fn-hero-steps li:first-child {
-    padding-left: 0;
+    padding-inline-start: 0;
+}
+
+/* Streamlit's markdown list rule outranks a single class, so the hero adds one
+   more class to keep the note flush with the headline. */
+.fn-empty-hero .fn-hero-steps {
+    padding-inline: 0;
+}
+
+.fn-empty-hero .fn-hero-steps li:first-child {
+    padding-inline-start: 0;
 }
 
 .fn-hero-steps li + li {
@@ -686,6 +936,9 @@ pre,
 }
 
 [data-testid="stBaseButton-tertiary"] {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
     min-height: 1.5rem;
     padding: 0 !important;
     border: 0 !important;
@@ -694,12 +947,31 @@ pre,
     font-family: var(--fn-font-mono);
     font-size: var(--fn-text-xs);
     letter-spacing: 0.08em;
+    text-decoration: underline;
+    text-decoration-color: var(--fn-rule);
+    text-decoration-thickness: 1px;
+    text-underline-offset: 0.25em;
     text-transform: uppercase;
 }
 
-[data-testid="stBaseButton-tertiary"]:hover {
+/* A static inline SVG mask marks the replace action without adding a font icon;
+   the button's own label remains the accessible name. */
+[data-testid="stBaseButton-tertiary"]::before {
+    content: "";
+    flex: none;
+    width: 0.7rem;
+    height: 0.7rem;
+    background-color: currentColor;
+    mask-image: url("$replace_icon");
+    mask-position: center;
+    mask-repeat: no-repeat;
+    mask-size: contain;
+}
+
+[data-testid="stBaseButton-tertiary"]:hover,
+[data-testid="stBaseButton-tertiary"]:focus-visible {
     color: var(--fn-ink) !important;
-    text-decoration: underline;
+    text-decoration-color: currentColor;
 }
 
 [data-testid="stSpinner"] {
@@ -900,7 +1172,7 @@ pre,
     top: 0;
     right: 0;
     left: 0;
-    height: var(--fn-rule-weight-strong);
+    height: var(--fn-card-rule-weight);
     background: var(--fn-ink);
     transform-origin: left center;
     animation: fn-draw-rule var(--fn-motion-arrival) var(--fn-ease) both;
@@ -951,7 +1223,7 @@ pre,
 
 .fn-evidence-card:hover::before,
 .fn-evidence-card:focus-within::before {
-    height: calc(var(--fn-rule-weight-strong) + 1px);
+    height: calc(var(--fn-card-rule-weight) + 1px);
     background: var(--fn-persimmon-text);
 }
 
@@ -1056,6 +1328,7 @@ def build_css() -> str:
         motion_tab=MOTION_TAB,
         motion_stagger=MOTION_STAGGER,
         easing=EASING,
+        replace_icon=_REPLACE_ICON,
     )
 
 

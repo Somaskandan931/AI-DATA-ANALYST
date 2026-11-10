@@ -101,6 +101,24 @@ def test_scales_and_class_vocabulary_are_explicit() -> None:
         "result_marker": "fn-result-marker",
         "shell_marker": "fn-shell-marker",
         "fresh": "fn-fresh",
+        "table_scroll": "fn-table-scroll",
+        "table": "fn-table",
+        "table_caption": "fn-table-caption",
+        "table_num": "fn-num",
+        "kv_figure": "fn-kv-figure",
+        "kv_list": "fn-kv-list",
+        "kv_item": "fn-kv-item",
+        "kv_title": "fn-kv-title",
+        "kv_pairs": "fn-kv-pairs",
+        "kv_pair": "fn-kv-pair",
+        "kv_values": "fn-kv-values",
+        "inspector": "fn-inspector",
+        "inspector_section": "fn-inspector-section",
+        "inspector_title": "fn-inspector-title",
+        "inspector_list": "fn-inspector-list",
+        "inspector_row": "fn-inspector-row",
+        "mono": "fn-mono",
+        "fingerprint": "fn-fingerprint",
     }
 
 
@@ -236,6 +254,93 @@ def test_fresh_content_keeps_one_time_based_arrival() -> None:
     assert '.fn-fresh [data-testid="stExpander"]' in stylesheet
     fresh_override = _block(stylesheet, ".fn-fresh .fn-evidence-body")
     assert "animation: none" in fresh_override
+
+
+def test_tables_scroll_keep_semantics_and_align_numbers() -> None:
+    stylesheet = css.build_css()
+
+    assert ".fn-table-scroll" in stylesheet
+    assert "overflow-x: auto" in stylesheet
+    assert "position: sticky" in stylesheet
+    assert "font-variant-numeric: tabular-nums" in stylesheet
+    assert "background-attachment: local, local, scroll, scroll" in stylesheet
+    assert ".fn-kv-list" in stylesheet
+    assert ".fn-inspector-row" in stylesheet
+    assert "white-space: nowrap" in stylesheet
+    # The small tables never gain a box grid; only row rules are drawn.
+    cells = _block(stylesheet, ".fn-table th,")
+    assert "border-bottom" in cells
+    assert "border: 1px solid" not in cells
+
+
+def test_section_head_keeps_the_group_chip_beside_the_label() -> None:
+    block = _block(css.build_css(), ".fn-section-head {")
+
+    assert "justify-content: flex-start" in block
+    assert "space-between" not in block
+
+
+def test_hero_steps_share_one_rule_and_start_at_the_headline() -> None:
+    stylesheet = css.build_css()
+    block = _block(stylesheet, ".fn-hero-steps {")
+
+    assert block.count("border-top") == 1
+    assert "border-bottom" not in block
+    assert "padding-inline: 0" in _block(stylesheet, ".fn-empty-hero .fn-hero-steps {")
+
+
+def test_result_rule_uses_the_card_rule_weight() -> None:
+    stylesheet = css.build_css()
+
+    assert stylesheet.count("height: var(--fn-card-rule-weight);") == 2
+    # Scoped to the arrival rule: the spinner bar legitimately keeps the strong weight,
+    # so the earlier whole-stylesheet negative assertion was too broad.
+    result_rule = re.search(
+        r"\.fn-result-marker\.fn-fresh\s*\)::before \{(?P<body>[^}]*)\}", stylesheet
+    )
+    assert result_rule is not None
+    assert "height: var(--fn-card-rule-weight);" in result_rule.group("body")
+    assert (
+        _block(stylesheet, ".fn-evidence-card::before").count("height: var(--fn-card-rule-weight);")
+        == 1
+    )
+
+
+def test_quiet_replace_action_has_an_underline_icon_and_focus_state() -> None:
+    stylesheet = css.build_css()
+    block = _block(stylesheet, '[data-testid="stBaseButton-tertiary"] {')
+
+    assert "text-decoration: underline" in block
+    assert "text-underline-offset" in block
+    assert "mask-image: url(" in _block(
+        stylesheet, '[data-testid="stBaseButton-tertiary"]::before {'
+    )
+    assert '[data-testid="stBaseButton-tertiary"]:focus-visible' in stylesheet
+
+
+def test_interaction_script_is_static_and_scoped_to_field_notes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    script = css._INTERACTION_SCRIPT
+
+    assert isinstance(script, str)
+    assert "$" not in script
+    for sink in ("innerHTML", "outerHTML", "insertAdjacentHTML", "document.write", "eval("):
+        assert sink not in script
+    assert 'classList.contains("fn-computed-from")' in script
+
+    selectors = re.findall(r'\.closest\("([^"]+)"\)', script)
+    assert selectors == [".fn-footnote a[href^='#']"]
+    classes = re.findall(r'classList\.(?:add|remove)\("([^"]+)"\)', script)
+    assert classes and all(name.startswith("fn-") for name in classes)
+
+    captured: dict[str, str] = {}
+    monkeypatch.setattr(css.st, "markdown", lambda *args, **kwargs: None)
+    monkeypatch.setattr(css.st, "html", lambda body, **kwargs: captured.update(html=body))
+    css.apply_theme()
+
+    # The exact constant is injected; nothing from the session is interpolated into it.
+    assert captured["html"] == script
 
 
 def test_streamlit_floor_is_166() -> None:
