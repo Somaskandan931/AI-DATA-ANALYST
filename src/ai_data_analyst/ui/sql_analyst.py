@@ -382,7 +382,10 @@ def _show_query_result(details: SQLPipelineResult, question: str | None = None) 
 
     if result.rows:
         display = _display_frame(result)
-        st.dataframe(display, use_container_width=True)
+        layout.table(
+            [tuple(row) for row in display.itertuples(index=False, name=None)],
+            list(display.columns),
+        )
         if list(display.columns) != list(result.columns):
             st.caption("Duplicate column names are preserved; display labels are disambiguated.")
     else:
@@ -416,14 +419,15 @@ def _run_query(
     try:
         generator = create_sql_generator()
 
-        details = run_sql_pipeline_with_details(
-            question=question,
-            schema=schema,
-            db_path=database_path,
-            generator=generator,
-            limits=LimitsConfig.from_env(),
-            skip_ambiguity_check=skip_ambiguity_check,
-        )
+        with st.spinner("Generating and running SQL..."):
+            details = run_sql_pipeline_with_details(
+                question=question,
+                schema=schema,
+                db_path=database_path,
+                generator=generator,
+                limits=LimitsConfig.from_env(),
+                skip_ambiguity_check=skip_ambiguity_check,
+            )
 
         _clear_pending_clarification()
         _remember_query(question, details)

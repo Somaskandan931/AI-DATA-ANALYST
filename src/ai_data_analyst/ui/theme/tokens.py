@@ -23,6 +23,9 @@ class Palette:
     sage_text: str = "#5E6E54"
     persimmon: str = "#D96845"
     persimmon_text: str = "#B04E2F"
+    persimmon_deep: str = "#9B4429"
+    sage_tint: str = "#E7EBE2"
+    persimmon_tint: str = "#F6E4DC"
     on_persimmon: str = "#FFFFFF"
     chart_categorical: tuple[str, ...] = (
         "#5E6E54",
@@ -70,24 +73,35 @@ RULE_WEIGHT: Final = "1px"
 RULE_WEIGHT_STRONG: Final = "2px"
 PROSE_MAX_WIDTH: Final = "68ch"
 RADIUS: Final = "2px"
-MOTION_DURATION: Final = "220ms"
+MOTION_FAST: Final = "140ms"
+MOTION_STANDARD: Final = "220ms"
+MOTION_ARRIVAL: Final = "360ms"
+MOTION_TAB: Final = "160ms"
+MOTION_STAGGER: Final = "40ms"
+EASING: Final = "cubic-bezier(0.22, 0.61, 0.36, 1)"
 
 FONT_UI: Final = "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif"
 FONT_HEADING: Final = "'Fraunces', Georgia, 'Times New Roman', serif"
 FONT_MONO: Final = "'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, monospace"
 
 CLASSES: Final[dict[str, str]] = {
+    "app_header": "fn-app-header",
+    "app_wordmark": "fn-app-wordmark",
+    "app_subtitle": "fn-app-subtitle",
     "page_header": "fn-page-header",
     "page_heading": "fn-page-heading",
     "page_title": "fn-page-title",
     "page_purpose": "fn-page-purpose",
     "section_label": "fn-section-label",
+    "section_head": "fn-section-head",
     "evidence_card": "fn-evidence-card",
+    "evidence_body": "fn-evidence-body",
     "evidence_value": "fn-evidence-value",
     "evidence_value_missing": "fn-evidence-value--missing",
     "evidence_label": "fn-evidence-label",
     "evidence_note": "fn-evidence-note",
     "card_grid": "fn-card-grid",
+    "card_footer": "fn-card-footer",
     "computed_from": "fn-computed-from",
     "footnote": "fn-footnote",
     "source_chip": "fn-source-chip",
@@ -101,6 +115,10 @@ CLASSES: Final[dict[str, str]] = {
     "wordmark": "fn-wordmark",
     "hero_title": "fn-hero-title",
     "hero_purpose": "fn-hero-purpose",
+    "hero_steps": "fn-hero-steps",
+    "intro": "fn-intro",
+    "intro_marker": "fn-intro-marker",
+    "result_marker": "fn-result-marker",
     "shell_marker": "fn-shell-marker",
     "fresh": "fn-fresh",
 }

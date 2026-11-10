@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
+
 import pytest
 
 from ai_data_analyst.models import ColumnProfile, DatasetProfile
@@ -9,6 +11,7 @@ from ai_data_analyst.sql_agent.executor import SQLExecutionResult
 from ai_data_analyst.ui.evidence import (
     SOURCE_LABELS,
     EvidenceSource,
+    EvidenceView,
     OverviewFields,
     interpret_columns,
     interpret_duplicates,
@@ -51,12 +54,19 @@ def test_overview_view_maps_known_fields_and_interpretations() -> None:
         ("Duplicate rows", "5"),
     ]
     assert [card.interpretation for card in view.cards] == [
-        "485 rows were read.",
+        "Read from the uploaded file.",
         "6 columns: 2 numeric, 3 text, 1 date.",
         "16 cells are empty (0.5% of 2,910).",
         "5 rows repeat an earlier row.",
     ]
     assert all(card.source is EvidenceSource.COMPUTED for card in view.cards)
+
+
+def test_rows_interpretation_names_the_source_without_repeating_the_count() -> None:
+    view = overview_view_from(OverviewFields(row_count=485, source_name="sample_demand.csv"))
+
+    assert view.cards[0].value == "485"
+    assert view.cards[0].interpretation == "Read from sample_demand.csv."
 
 
 def test_missing_fields_have_no_value_or_interpretation() -> None:
@@ -70,7 +80,7 @@ def test_missing_fields_have_no_value_or_interpretation() -> None:
 
 
 def test_interpretations_are_deterministic_one_liners() -> None:
-    assert interpret_rows(OverviewFields(row_count=1)) == "1 row was read."
+    assert interpret_rows(OverviewFields(row_count=1)) == "Read from the uploaded file."
     assert interpret_columns(OverviewFields(column_count=None)) is None
     assert interpret_columns(OverviewFields(column_count=1)) == "1 column."
     assert (
@@ -94,8 +104,26 @@ def test_cards_use_one_highlight_and_a_linked_footnote_each() -> None:
     for position in range(1, 5):
         assert f'id="fn-computed-from-overview-{position}"' in rendered
         assert f'href="#fn-computed-from-overview-{position}"' in rendered
-    assert rendered.count('class="fn-chip-shape"') == 4
-    assert "COMPUTED" in rendered
+    # One shared source is announced once beside the group label (layout.section_label),
+    # so repeating a chip on all four cards would only add noise.
+    assert rendered.count('class="fn-chip-shape"') == 0
+    assert "COMPUTED" not in rendered
+
+
+def test_mixed_sources_keep_one_chip_per_card() -> None:
+    view = overview_view_from(FIELDS)
+    mixed = EvidenceView(
+        cards=(
+            view.cards[0],
+            replace(view.cards[1], source=EvidenceSource.QUERY_RESULT),
+        ),
+        key="mixed",
+    )
+
+    rendered = render_evidence_view(mixed)
+
+    assert rendered.count('class="fn-chip-shape"') == 2
+    assert "COMPUTED" in rendered and "QUERY RESULT" in rendered
 
 
 def test_query_result_card_uses_query_result_chip() -> None:

@@ -11,7 +11,6 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
-import pandas as pd
 import streamlit as st
 from pydantic import ValidationError
 
@@ -39,9 +38,9 @@ from ..chat import SUPPORTED_QUESTIONS, ChatAnswer, ChatError
 from ..ingestion import IngestionError
 from ..reporting import ReportError, chart_svg
 from ..security import InMemoryAuditSink
-from . import evidence, layout
+from . import evidence, formatting, layout
 from . import workspace as ws_api
-from .theme import fresh_class
+from .theme import CLASSES, fresh_class
 from .workspace import Workspace, WorkspaceError
 
 SAMPLE_PATH = Path(__file__).resolve().parents[3] / "data" / "sample" / "electricity_demand.csv"
@@ -64,6 +63,36 @@ _EXPECTED = (
     ValidationError,
 )
 _T = TypeVar("_T")
+_PROFILE_COLUMNS = (
+    "name",
+    "inferred_type",
+    "missing_count",
+    "unique_count",
+    "min",
+    "max",
+    "mean",
+    "median",
+    "std",
+    "q1",
+    "q3",
+    "outlier_count",
+)
+# Short display labels keep every header whole inside its column; the data keys above
+# are unchanged, so provenance and tests still speak the same names.
+_PROFILE_LABELS = {
+    "name": "Column",
+    "inferred_type": "Type",
+    "missing_count": "Missing",
+    "unique_count": "Unique",
+    "min": "Min",
+    "max": "Max",
+    "mean": "Mean",
+    "median": "Median",
+    "std": "Std",
+    "q1": "Q1",
+    "q3": "Q3",
+    "outlier_count": "Outliers",
+}
 
 
 def _guard(action: Callable[[], _T]) -> _T | None:
@@ -94,16 +123,23 @@ def _audit() -> InMemoryAuditSink:
 
 def _empty_state() -> None:
     """The first screen before a dataset exists; animate only on its first appearance."""
-    fresh = fresh_class("auto-eda-empty", None)
+    intro = CLASSES["intro"] if fresh_class("auto-eda-empty", None) else ""
+    marker = f'<span class="{CLASSES["intro_marker"]}" aria-hidden="true"></span>' if intro else ""
     st.html(
         f"""
-        <section class="fn-empty-hero {fresh}" aria-labelledby="fn-wordmark">
+        <section class="fn-empty-hero {intro}" aria-labelledby="fn-wordmark">
             <p class="fn-wordmark" id="fn-wordmark">Field Notes</p>
             <h2 class="fn-hero-title">A quiet workspace for your data.</h2>
             <p class="fn-hero-purpose">
                 Profile, clean, and explain a dataset while keeping every number
                 traceable to its source.
             </p>
+            <ol class="fn-hero-steps" aria-label="How it works">
+                <li><span>01</span>Profile</li>
+                <li><span>02</span>Clean</li>
+                <li><span>03</span>Explain</li>
+            </ol>
+            {marker}
         </section>
         """
     )
@@ -115,8 +151,15 @@ def _current_workspace() -> Workspace | None:
     return workspace if isinstance(workspace, Workspace) else None
 
 
-def _source_controls() -> Workspace | None:
-    """Buttons and uploader that load or replace the dataset."""
+def _source_controls(has_workspace: bool) -> Workspace | None:
+    """Load or replace the dataset; after loading only a quiet replace action remains."""
+    if has_workspace:
+        if st.button("Replace dataset", type="tertiary"):
+            st.session_state.pop(_KEY, None)
+            st.session_state.pop(_UPLOAD_KEY, None)
+            st.rerun()
+        return _current_workspace()
+
     use_sample = st.button(
         "Use the sample dataset",
         type="primary",
@@ -163,9 +206,10 @@ def _rail(workspace: Workspace) -> None:
 
 def _overview(workspace: Workspace) -> None:
     """The compact overview cards; animate only when the dataset changes."""
-    layout.section_label("Overview")
+    view = evidence.overview_view(workspace.profile, source_name=workspace.source_name)
+    layout.section_label("Overview", source=evidence.grouped_source(view))
     fresh = fresh_class("auto-eda-overview", workspace.profile.dataset_fingerprint)
-    layout.evidence_view(evidence.overview_view(workspace.profile), fresh=bool(fresh))
+    layout.evidence_view(view, fresh=bool(fresh))
 
 
 # ---- profile --------------------------------------------------------------------------------
@@ -178,12 +222,35 @@ def _profile_tab(workspace: Workspace) -> None:
         "Column types, missing values and the first rows, exactly as uploaded.",
     )
     profile = workspace.profile
-    table = pd.DataFrame([col.model_dump() for col in profile.columns])
-    for name in ("min", "max"):  # numbers for numeric columns, dates for date columns
-        table[name] = table[name].map(lambda v: "" if v is None else str(v))
-    st.dataframe(table, hide_index=True)
+    frame = formatting.frame_from(
+        (column.model_dump() for column in profile.columns), _PROFILE_COLUMNS
+    )
+    st.dataframe(
+        formatting.style_missing(frame),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            name: st.column_config.TextColumn(
+                _PROFILE_LABELS[name],
+                width="medium" if name in {"name", "min", "max"} else "small",
+            )
+            for name in _PROFILE_COLUMNS
+        },
+    )
     st.caption("First rows exactly as uploaded")
-    st.dataframe(workspace.ingested.frame.head(20))
+    raw = workspace.ingested.frame.head(20)
+    preview = formatting.frame_from(
+        raw.itertuples(index=False, name=None), [str(name) for name in raw.columns]
+    )
+    date_columns = {column.name for column in profile.columns if column.inferred_type == "date"}
+    st.dataframe(
+        formatting.style_missing(preview),
+        hide_index=True,
+        width="stretch",
+        column_config={
+            name: st.column_config.TextColumn(name, width="medium") for name in date_columns
+        },
+    )
 
 
 # ---- cleaning -------------------------------------------------------------------------------
@@ -259,7 +326,7 @@ def _cleaning_tab(workspace: Workspace) -> None:
     if view is None:
         st.info("No cleaning is applied.")
         return
-    st.text(f"Rows: {view.rows_before} before, {view.rows_after} after")
+    st.text(f"Rows: {view.rows_before:,} before, {view.rows_after:,} after")
     for line in view.log:
         st.text(f"- {line}")
 
@@ -363,34 +430,38 @@ def _results(workspace: Workspace) -> None:
     if report is None:
         return
     for result in report.results:
-        with st.expander(result.title, expanded=False):
-            method = report.methods[result.step]
-            st.text(f"Rows used: {method.rows_used} of {method.rows_in_dataset}")
-            for warning in workspace.artifacts[result.step].warnings:
-                st.warning(warning)
-            for label, value in result.facts:
-                st.text(f"{label}: {value}")
-            parameters = ", ".join(f"{name}={value}" for name, value in method.parameters)
-            layout.computed_from(
-                (
-                    ("Operation", method.operation),
-                    ("Parameters", parameters or "none"),
-                    ("Rows used", f"{method.rows_used} of {method.rows_in_dataset}"),
-                    ("Input columns", ", ".join(method.input_columns) or "none"),
-                    ("Cleaning", "; ".join(method.cleaning) or "none"),
+        artifact = workspace.artifacts[result.step]
+        fresh = fresh_class(
+            f"analysis-{result.step}",
+            (artifact.operation, artifact.parameters),
+        )
+        with st.container():
+            layout.result_marker(fresh=bool(fresh))
+            with st.expander(result.title, expanded=False):
+                method = report.methods[result.step]
+                for warning in artifact.warnings:
+                    st.warning(warning)
+                for label, value in result.facts:
+                    if label == "Rows used":  # shown once, inside "Computed from"
+                        continue
+                    st.text(f"{label}: {value}")
+                parameters = ", ".join(f"{name}={value}" for name, value in method.parameters)
+                layout.computed_from(
+                    (
+                        ("Operation", method.operation),
+                        ("Parameters", parameters or "none"),
+                        ("Rows used", f"{method.rows_used:,} of {method.rows_in_dataset:,}"),
+                        ("Input columns", ", ".join(method.input_columns) or "none"),
+                        ("Cleaning", "; ".join(method.cleaning) or "none"),
+                    )
                 )
-            )
-            for table in result.tables:
-                st.caption(table.caption)
-                st.dataframe(
-                    pd.DataFrame(list(table.rows), columns=list(table.headers)),
-                    hide_index=True,
-                )
-            for position in result.chart_indices:
-                st.image(chart_svg(report.charts[position]))
-            if st.button("Remove this analysis", key=f"remove_{result.step}"):
-                ws_api.remove_artifact(workspace, result.step)
-                st.rerun()
+                for table in result.tables:
+                    layout.table(table.rows, table.headers, caption=table.caption)
+                for position in result.chart_indices:
+                    st.image(chart_svg(report.charts[position]))
+                if st.button("Remove this analysis", key=f"remove_{result.step}"):
+                    ws_api.remove_artifact(workspace, result.step)
+                    st.rerun()
 
 
 def _analysis_tab(workspace: Workspace) -> None:
@@ -401,7 +472,12 @@ def _analysis_tab(workspace: Workspace) -> None:
     )
     operation = st.selectbox("Analysis", _OPERATIONS)
     step = _step_form(workspace, operation)
-    artifact = _guard(lambda: ws_api.run_step(workspace, step)) if step is not None else None
+    if step is not None:
+        label = step.operation.replace("_", " ")
+        with st.spinner(f"Running {label}..."):
+            artifact = _guard(lambda: ws_api.run_step(workspace, step))
+    else:
+        artifact = None
     if artifact is not None:
         # the rail is drawn before the tabs, so refresh it with the new artifact
         st.rerun()
@@ -442,9 +518,9 @@ def _show_answer(answer: ChatAnswer) -> None:
         st.caption(f"Note: {warning}")
     if answer.evidence:
         with st.expander("Evidence"):
-            st.dataframe(
-                pd.DataFrame([e.model_dump() for e in answer.evidence]),
-                hide_index=True,
+            layout.table(
+                [item.model_dump() for item in answer.evidence],
+                list(answer.evidence[0].model_dump()),
             )
 
 
@@ -477,13 +553,13 @@ def render() -> None:
     workspace = _current_workspace()
     if workspace is None:
         _empty_state()
-        if _source_controls() is not None:
+        if _source_controls(False) is not None:
             st.rerun()
         return
 
     rail, canvas = layout.shell()
     with rail:
-        if _source_controls() is not workspace:
+        if _source_controls(True) is not workspace:
             st.rerun()
         _rail(workspace)
     with canvas:

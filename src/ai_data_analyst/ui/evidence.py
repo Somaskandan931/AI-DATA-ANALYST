@@ -19,6 +19,7 @@ from .theme.tokens import CLASSES
 
 _COLUMN_SUMMARY_LIMIT: Final = 12
 _MISSING_NOTE: Final = "Interpretation not available."
+_MISSING_VALUE: Final = "–"
 
 
 class EvidenceSource(StrEnum):
@@ -52,6 +53,7 @@ class OverviewFields:
     date_columns: int | None = None
     logical_columns: int | None = None
     fingerprint: str | None = None
+    source_name: str | None = None
     columns: tuple[tuple[str, str], ...] = ()
     missing_by_column: tuple[tuple[str, int], ...] = ()
 
@@ -88,7 +90,7 @@ def _fingerprint(value: str | None) -> tuple[str, str]:
     return ("Dataset fingerprint", value or "Not available")
 
 
-def overview_fields(profile: DatasetProfile) -> OverviewFields:
+def overview_fields(profile: DatasetProfile, source_name: str | None = None) -> OverviewFields:
     """Read only the fields the overview needs from a profile."""
     kinds = Counter(column.inferred_type for column in profile.columns)
     return OverviewFields(
@@ -101,6 +103,7 @@ def overview_fields(profile: DatasetProfile) -> OverviewFields:
         date_columns=kinds["date"],
         logical_columns=kinds["boolean"],
         fingerprint=profile.dataset_fingerprint,
+        source_name=source_name,
         columns=tuple((column.name, column.inferred_type) for column in profile.columns),
         missing_by_column=tuple(
             (column.name, column.missing_count)
@@ -111,12 +114,10 @@ def overview_fields(profile: DatasetProfile) -> OverviewFields:
 
 
 def interpret_rows(fields: OverviewFields) -> str | None:
-    """One plain sentence, or ``None`` when the field is unknown."""
+    """Name the source instead of repeating the row count already shown above."""
     if fields.row_count is None:
         return None
-    if fields.row_count == 1:
-        return "1 row was read."
-    return f"{_count(fields.row_count)} rows were read."
+    return f"Read from {fields.source_name or 'the uploaded file'}."
 
 
 def interpret_columns(fields: OverviewFields) -> str | None:
@@ -184,9 +185,9 @@ def _summarise_missing(columns: tuple[tuple[str, int], ...]) -> str:
     return "; ".join(f"{name}: {_count(count)}" for name, count in columns)
 
 
-def overview_view(profile: DatasetProfile) -> EvidenceView:
+def overview_view(profile: DatasetProfile, source_name: str | None = None) -> EvidenceView:
     """The four overview cards for a profiled dataset."""
-    return overview_view_from(overview_fields(profile))
+    return overview_view_from(overview_fields(profile, source_name))
 
 
 def overview_view_from(fields: OverviewFields) -> EvidenceView:
@@ -272,18 +273,29 @@ def query_result_view(
     return EvidenceView(cards=(card,), key="query-result")
 
 
-def _source_chip(card: EvidenceCard) -> str:
-    classes = f"{CLASSES['source_chip']} {_CHIP_CLASSES[card.source]}"
+def grouped_source(view: EvidenceView) -> EvidenceSource | None:
+    """The one source shared by a multi-card group, or ``None`` when they differ."""
+    if len(view.cards) < 2:
+        return None
+    first = view.cards[0].source
+    return first if all(card.source is first for card in view.cards) else None
+
+
+def source_chip(source: EvidenceSource) -> str:
+    """One chip: text plus a shape, never colour alone."""
+    classes = f"{CLASSES['source_chip']} {_CHIP_CLASSES[source]}"
     shape = f'<span class="{CLASSES["chip_shape"]}" aria-hidden="true"></span>'
-    return f'<p class="{classes}">{shape}{escape(SOURCE_LABELS[card.source])}</p>'
+    return f'<p class="{classes}">{shape}{escape(SOURCE_LABELS[source])}</p>'
 
 
-def _render_card(view_key: str, card: EvidenceCard, position: int) -> str:
+def _render_card(
+    view_key: str, card: EvidenceCard, position: int, *, with_chip: bool = True
+) -> str:
     details_id = f"fn-computed-from-{escape(view_key)}-{position}"
     if card.value is None:
         value = (
             f'<p class="{CLASSES["evidence_value"]} {CLASSES["evidence_value_missing"]}">'
-            "Not available</p>"
+            f"{_MISSING_VALUE}</p>"
         )
     else:
         value = (
@@ -301,14 +313,17 @@ def _render_card(view_key: str, card: EvidenceCard, position: int) -> str:
     provenance = "".join(
         f"<dt>{escape(label)}</dt><dd>{escape(text)}</dd>" for label, text in card.computed_from
     )
+    chip = source_chip(card.source) if with_chip else ""
     return (
         f'<article class="{CLASSES["evidence_card"]}" '
         f'id="fn-card-{escape(view_key)}-{position}">'
+        f'<div class="{CLASSES["evidence_body"]}">'
         f'<p class="{CLASSES["evidence_label"]}">{escape(card.label)}</p>'
-        f"{value}{note}{_source_chip(card)}"
+        f"{value}{note}"
+        f'<footer class="{CLASSES["card_footer"]}">{chip}'
         f'<details class="{CLASSES["computed_from"]}" id="{details_id}">'
         f"<summary>Computed from</summary><dl>{provenance}</dl>"
-        "</details></article>"
+        "</details></footer></div></article>"
     )
 
 
@@ -317,7 +332,9 @@ def render_evidence_view(view: EvidenceView, *, fresh: bool = False) -> str:
     classes = [CLASSES["card_grid"]]
     if fresh:
         classes.append(CLASSES["fresh"])
+    grouped = grouped_source(view) is not None
     cards = "".join(
-        _render_card(view.key, card, position) for position, card in enumerate(view.cards, 1)
+        _render_card(view.key, card, position, with_chip=not grouped)
+        for position, card in enumerate(view.cards, 1)
     )
     return f'<section class="{" ".join(classes)}">{cards}</section>'

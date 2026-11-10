@@ -72,6 +72,33 @@ def test_overview_animates_only_on_first_render() -> None:
     assert "fn-fresh" not in second
 
 
+def test_loaded_dataset_replaces_the_primary_cta_with_a_quiet_action() -> None:
+    at = _sample(_started())
+    labels = [b.label for b in at.button]
+
+    assert "Replace dataset" in labels
+    assert "Use the sample dataset" not in labels
+
+
+def test_overview_group_announces_one_shared_source() -> None:
+    at = _sample(_started())
+    overview = next(h.value for h in at.html if "fn-card-grid" in h.value)
+    heads = [h.value for h in at.html if "fn-section-head" in h.value]
+
+    assert any("Overview" in head and "COMPUTED" in head for head in heads)
+    assert 'class="fn-chip-shape"' not in overview
+
+
+def test_hero_intro_runs_once_per_session() -> None:
+    at = _started()
+    first = next(h.value for h in at.html if "fn-empty-hero" in h.value)
+    assert "fn-intro" in first
+
+    at = at.run()
+    second = next(h.value for h in at.html if "fn-empty-hero" in h.value)
+    assert "fn-intro" not in second
+
+
 def test_analysis_result_shows_computed_from() -> None:
     at = _sample(_started())
     next(s for s in at.selectbox if s.label == "Analysis").select("summary_stats").run()
@@ -108,11 +135,30 @@ def test_analysis_form_runs_a_step_and_shows_errors() -> None:
     form_columns.select("demand_mwh")
     next(b for b in at.button if b.label == "Run").click().run()
     assert not at.exception
-    assert any("Rows used: 485 of 485" in t.value for t in at.text)
+    # "Rows used" is now a provenance field, so the figure appears once inside
+    # "Computed from" instead of also being repeated as a standalone fact line.
+    computed = next(h.value for h in at.html if "<dt>Rows used</dt>" in h.value)
+    assert computed.count("<dt>Rows used</dt>") == 1
+    assert '<dd><span class="fn-highlight">485 of 485</span></dd>' in computed
+    assert not any("Rows used:" in t.value for t in at.text)
     # a step the dataset cannot support is reported, not raised
     next(s for s in at.selectbox if s.label == "Analysis").select("correlation").run()
     next(b for b in at.button if b.label == "Run").click().run()
     assert not at.exception and at.error
+
+
+def test_analysis_result_arrival_is_not_replayed_on_a_harmless_rerun() -> None:
+    at = _sample(_started())
+    next(s for s in at.selectbox if s.label == "Analysis").select("summary_stats").run()
+    next(m for m in at.multiselect if m.label == "Numeric columns").select("demand_mwh")
+    next(b for b in at.button if b.label == "Run").click().run()
+
+    first = next(h.value for h in at.html if "fn-result-marker" in h.value)
+    assert "fn-fresh" in first
+
+    at = at.run()
+    second = next(h.value for h in at.html if "fn-result-marker" in h.value)
+    assert "fn-fresh" not in second
 
 
 def test_chat_error_stays_visible() -> None:
