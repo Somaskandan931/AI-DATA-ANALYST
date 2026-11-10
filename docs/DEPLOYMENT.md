@@ -29,7 +29,9 @@ Anything that can run Python 3.11+ or a container can host it.
    ```
 
    Top-level secrets are exposed as environment variables, which is where the app reads them.
-4. Deploy. The platform installs from the root `requirements.txt`, which is an editable install
+4. In Advanced settings, set the custom subdomain to `aida` (the app URL becomes
+   `aida.streamlit.app` if it is free; otherwise pick another, such as `aida-analyst`).
+5. Deploy. The platform installs from the root `requirements.txt`, which is an editable install
    of this project (`-e .[app,gemini]`). The editable form is required because the app reads
    `data/sample/` relative to the source tree.
 
@@ -41,7 +43,7 @@ only there; the GitHub README does not need it):
 
 ```yaml
 ---
-title: AI Data Analyst Agent
+title: AIDA
 sdk: docker
 app_port: 8501
 ---

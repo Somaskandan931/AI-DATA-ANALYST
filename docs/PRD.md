@@ -2,7 +2,7 @@
 
 ## 1. Product overview
 
-**Product name:** AI Data Analyst Agent  
+**Product name:** AIDA (AI Data Analyst Agent)  
 **Version:** 0.1 (foundation draft)  
 **Type:** Standalone application with two integrated modules  
 **Collaborators:** Somaskandan and Nishi  
