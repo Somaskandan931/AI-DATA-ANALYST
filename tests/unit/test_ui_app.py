@@ -28,7 +28,10 @@ def _sample(at: AppTest) -> AppTest:
 def test_starts_empty_with_both_workspaces() -> None:
     at = _started()
     assert [t.label for t in at.tabs][:2] == ["Auto-EDA", "SQL Analyst"]
-    assert any("Upload a CSV" in i.value for i in at.info)
+    assert any("fn-empty-hero" in h.value for h in at.html)
+    assert not any(
+        "Upload a CSV file or use the sample dataset to begin." in i.value for i in at.info
+    )
 
 
 def test_sample_loads_profile_and_all_tabs() -> None:

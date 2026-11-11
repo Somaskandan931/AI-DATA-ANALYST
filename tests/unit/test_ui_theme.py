@@ -1,0 +1,127 @@
+"""Field Notes token, config, contrast, motion, and escaping checks."""
+
+from __future__ import annotations
+
+import tomllib
+from pathlib import Path
+
+import pytest
+
+pytest.importorskip("streamlit")
+
+from ai_data_analyst.ui.theme import (  # noqa: E402
+    CLASSES,
+    PALETTE,
+    PROSE_MAX_WIDTH,
+    SPACING,
+    TYPE_SCALE,
+    css,  # noqa: E402
+)
+from ai_data_analyst.ui.theme.html import escape_text  # noqa: E402
+
+ROOT = Path(__file__).resolve().parents[2]
+CONFIG = ROOT / ".streamlit" / "config.toml"
+PYPROJECT = ROOT / "pyproject.toml"
+
+
+def _luminance(colour: str) -> float:
+    red, green, blue = (int(colour[index : index + 2], 16) / 255 for index in (1, 3, 5))
+    channels = []
+    for channel in (red, green, blue):
+        low = channel / 12.92
+        high = ((channel + 0.055) / 1.055) ** 2.4
+        channels.append(low if channel <= 0.04045 else high)
+    return 0.2126 * channels[0] + 0.7152 * channels[1] + 0.0722 * channels[2]
+
+
+def _contrast(foreground: str, background: str) -> float:
+    lighter, darker = sorted((_luminance(foreground), _luminance(background)), reverse=True)
+    return (lighter + 0.05) / (darker + 0.05)
+
+
+def test_theme_colours_meet_contrast_targets() -> None:
+    assert _contrast(PALETTE.ink, PALETTE.canvas) >= 7
+    assert _contrast(PALETTE.ink_muted, PALETTE.canvas) >= 4.5
+    assert _contrast(PALETTE.sage_text, PALETTE.canvas) >= 4.5
+    assert _contrast(PALETTE.persimmon_text, PALETTE.canvas) >= 4.5
+    assert _contrast(PALETTE.on_persimmon, PALETTE.persimmon_text) >= 4.5
+
+
+def test_toml_palette_matches_tokens() -> None:
+    theme = tomllib.loads(CONFIG.read_text(encoding="utf-8"))["theme"]
+
+    assert theme["backgroundColor"] == PALETTE.canvas
+    assert theme["secondaryBackgroundColor"] == PALETTE.secondary_surface
+    assert theme["textColor"] == PALETTE.ink
+    assert theme["primaryColor"] == PALETTE.persimmon_text
+    assert theme["borderColor"] == PALETTE.rule
+    assert theme["chartCategoricalColors"] == list(PALETTE.chart_categorical)
+
+
+def test_scales_and_class_vocabulary_are_explicit() -> None:
+    assert TYPE_SCALE.display == "3rem"
+    assert SPACING["8"] == "4rem"
+    assert PROSE_MAX_WIDTH == "68ch"
+    assert CLASSES == {
+        "page_header": "fn-page-header",
+        "section_label": "fn-section-label",
+        "evidence_card": "fn-evidence-card",
+        "evidence_value": "fn-evidence-value",
+        "evidence_label": "fn-evidence-label",
+        "evidence_note": "fn-evidence-note",
+        "source_chip": "fn-source-chip",
+        "rule": "fn-rule",
+        "prose": "fn-prose",
+        "highlight": "fn-highlight",
+        "empty_hero": "fn-empty-hero",
+        "wordmark": "fn-wordmark",
+        "hero_title": "fn-hero-title",
+        "hero_purpose": "fn-hero-purpose",
+        "fresh": "fn-fresh",
+    }
+
+
+def test_stylesheet_has_paper_grain_utilities_and_reduced_motion() -> None:
+    stylesheet = css.build_css()
+
+    assert "--fn-canvas: #F4F1E9" in stylesheet
+    assert "radial-gradient" in stylesheet
+    assert ".fn-page-header" in stylesheet
+    assert ".fn-section-label" in stylesheet
+    assert ".fn-evidence-card" in stylesheet
+    assert ".fn-source-chip" in stylesheet
+    assert ".fn-rule" in stylesheet
+    assert ".fn-prose" in stylesheet
+    assert "68ch" in stylesheet
+    assert ".fn-highlight" in stylesheet
+    assert ".fn-fresh" in stylesheet
+    assert stylesheet.count("animation: fn-rise") == 1
+    assert "@media (prefers-reduced-motion: reduce)" in stylesheet
+    assert "animation: none" in stylesheet
+
+
+def test_streamlit_floor_is_166() -> None:
+    project = tomllib.loads(PYPROJECT.read_text(encoding="utf-8"))
+    dependencies = project["project"]["optional-dependencies"]["app"]
+
+    assert any(
+        dependency.replace(" ", "").startswith("streamlit>=1.66") for dependency in dependencies
+    )
+
+
+def test_escape_text_neutralises_hostile_strings() -> None:
+    payload = '<script>alert("x")</script>'
+
+    escaped = escape_text(payload)
+
+    assert "<script>" not in escaped
+    assert "&lt;script&gt;" in escaped
+    assert "&quot;" in escaped
+
+
+def test_fresh_class_only_marks_changed_tokens(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(css.st, "session_state", {})
+
+    assert css.fresh_class("hero", None) == "fn-fresh"
+    assert css.fresh_class("hero", None) == ""
+    assert css.fresh_class("hero", "new") == "fn-fresh"
