@@ -13,6 +13,8 @@ pytest.importorskip("streamlit")
 from streamlit.testing.v1 import AppTest  # noqa: E402
 
 from ai_data_analyst.sql_agent.errors import LLMConfigurationError  # noqa: E402
+from ai_data_analyst.sql_agent.executor import SQLExecutionResult  # noqa: E402
+from ai_data_analyst.sql_agent.pipeline import SQLPipelineResult  # noqa: E402
 from ai_data_analyst.ui import sql_analyst  # noqa: E402
 
 APP = Path(__file__).resolve().parents[2] / "app.py"
@@ -311,6 +313,42 @@ def test_sql_page_names_the_database_once() -> None:
     # the old "Selected database:" line and Inspector row are gone (UI fix, item 6).
     at = _started()
     assert _visible_text(at).count("Electricity Demand Sample") == 1
+
+
+def test_sql_result_survives_an_unrelated_rerun_and_clears_on_source_change(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # The workspace shell must not lose the last query when another tab reruns, and
+    # must drop it as soon as the analyst is pointed at a different source.
+    details = SQLPipelineResult(
+        normalized_sql="SELECT 1 AS x",
+        execution=SQLExecutionResult(columns=("x",), rows=((1,),), truncated=False),
+    )
+    monkeypatch.setattr(sql_analyst, "create_sql_generator", lambda: object())
+    monkeypatch.setattr(sql_analyst, "run_sql_pipeline_with_details", lambda **_kwargs: details)
+
+    at = _started()
+    next(t for t in at.text_area if t.label == "Ask a question about your database").set_value(
+        "How many rows?"
+    ).run()
+    next(b for b in at.button if b.label == "Generate SQL and Run").click().run()
+
+    assert not at.exception
+    assert "Query executed successfully." in _visible_text(at)
+    assert "Question: How many rows?" in _visible_text(at)
+
+    # Loading the Auto-EDA sample is an unrelated widget rerun for the SQL tab.
+    at = _sample(at)
+    assert "Query executed successfully." in _visible_text(at)
+    assert "Question: How many rows?" in _visible_text(at)
+
+    next(r for r in at.radio if r.label == "Choose database source").set_value(
+        "Upload SQLite database"
+    ).run()
+
+    assert not at.exception
+    assert "Query executed successfully." not in _visible_text(at)
+    assert "Question: How many rows?" not in _visible_text(at)
 
 
 def test_no_internal_jargon_is_visible_in_empty_loaded_and_error_states(monkeypatch) -> None:
