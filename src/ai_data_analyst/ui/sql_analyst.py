@@ -8,13 +8,14 @@ import tempfile
 from pathlib import Path
 from uuid import uuid4
 
+import pandas as pd
 import streamlit as st
 from streamlit.runtime.uploaded_file_manager import UploadedFile
 
 from ai_data_analyst.security.limits import LimitsConfig
 from ai_data_analyst.sql_agent.contracts import SchemaSnapshot
 from ai_data_analyst.sql_agent.errors import LLMConfigurationError
-from ai_data_analyst.sql_agent.executor import SQLExecutionError
+from ai_data_analyst.sql_agent.executor import SQLExecutionError, SQLExecutionResult
 from ai_data_analyst.sql_agent.pipeline import (
     SQLClarificationRequired,
     SQLPipelineError,
@@ -88,12 +89,78 @@ ALLOWED_EXTENSIONS = {".db", ".sqlite", ".sqlite3"}
 
 PENDING_QUESTION_KEY = "sql_pending_question"
 PENDING_CLARIFICATION_KEY = "sql_pending_clarification"
+LAST_RESULT_KEY = "sql_last_result"
+LAST_QUESTION_KEY = "sql_last_question"
+QUERY_SOURCE_KEY = "sql_query_source"
 
 
 def _clear_pending_clarification() -> None:
     """Clear any stored clarification state."""
     st.session_state.pop(PENDING_QUESTION_KEY, None)
     st.session_state.pop(PENDING_CLARIFICATION_KEY, None)
+
+
+def _result_frame(result: SQLExecutionResult) -> pd.DataFrame:
+    """Build the result frame without collapsing duplicate column names."""
+    return pd.DataFrame.from_records(result.rows, columns=result.columns)
+
+
+def _display_frame(result: SQLExecutionResult) -> pd.DataFrame:
+    """Return a display copy with unique labels; Arrow rejects duplicate columns."""
+    frame = _result_frame(result)
+    labels: list[str] = []
+    seen: dict[str, int] = {}
+    for column in frame.columns:
+        count = seen.get(str(column), 0) + 1
+        seen[str(column)] = count
+        labels.append(str(column) if count == 1 else f"{column} [{count}]")
+    if labels == list(frame.columns):
+        return frame
+    display = frame.copy()
+    display.columns = labels
+    return display
+
+
+def _remember_query(question: str, details: SQLPipelineResult) -> None:
+    """Keep the last successful result so ordinary reruns do not lose it."""
+    st.session_state[LAST_RESULT_KEY] = details
+    st.session_state[LAST_QUESTION_KEY] = question
+
+
+def _last_query() -> tuple[str | None, SQLPipelineResult | None]:
+    """Return the stored question and result, if they are still valid."""
+    details = st.session_state.get(LAST_RESULT_KEY)
+    question = st.session_state.get(LAST_QUESTION_KEY)
+    if not isinstance(details, SQLPipelineResult):
+        return None, None
+    return (question if isinstance(question, str) else None), details
+
+
+def _clear_query_result() -> None:
+    """Drop the last result when the database or approved schema changes."""
+    st.session_state.pop(LAST_RESULT_KEY, None)
+    st.session_state.pop(LAST_QUESTION_KEY, None)
+
+
+def _query_source(
+    database_path: Path, schema: SchemaSnapshot
+) -> tuple[str, tuple[tuple[str, tuple[str, ...]], ...]]:
+    """A stable identity for the database and approved columns a result belongs to."""
+    return (
+        str(database_path),
+        tuple(
+            (table.name, tuple(column.name for column in table.columns)) for table in schema.tables
+        ),
+    )
+
+
+def _sync_query_source(database_path: Path, schema: SchemaSnapshot) -> None:
+    """Clear a stored result when the database or approved schema changes."""
+    signature = _query_source(database_path, schema)
+    previous = st.session_state.get(QUERY_SOURCE_KEY)
+    if previous is not None and previous != signature:
+        _clear_query_result()
+    st.session_state[QUERY_SOURCE_KEY] = signature
 
 
 def _save_uploaded_database(uploaded_file: UploadedFile) -> Path:
@@ -283,8 +350,10 @@ def _configuration_failure_message(error: LLMConfigurationError) -> str:
     )
 
 
-def _show_query_result(details: SQLPipelineResult) -> None:
+def _show_query_result(details: SQLPipelineResult, question: str | None = None) -> None:
     """Display validated SQL and its execution result."""
+    if question:
+        st.text(f"Question: {question}")
     st.success("Query executed successfully.")
 
     st.markdown("**Validated SQL**")
@@ -295,19 +364,10 @@ def _show_query_result(details: SQLPipelineResult) -> None:
     st.markdown("**Query Results**")
 
     if result.rows:
-        st.dataframe(
-            [
-                dict(
-                    zip(
-                        result.columns,
-                        row,
-                        strict=False,
-                    )
-                )
-                for row in result.rows
-            ],
-            use_container_width=True,
-        )
+        display = _display_frame(result)
+        st.dataframe(display, use_container_width=True)
+        if list(display.columns) != list(result.columns):
+            st.caption("Duplicate column names are preserved; display labels are disambiguated.")
     else:
         st.info("The query completed successfully but returned no rows.")
 
@@ -315,6 +375,13 @@ def _show_query_result(details: SQLPipelineResult) -> None:
 
     if result.truncated:
         st.warning("Results were limited by the configured maximum row count.")
+
+
+def _show_last_query() -> None:
+    """Render the stored result after ordinary reruns."""
+    question, details = _last_query()
+    if details is not None:
+        _show_query_result(details, question)
 
 
 def _run_query(
@@ -327,6 +394,8 @@ def _run_query(
 
     Skip ambiguity detection only after explicit user clarification.
     """
+    _clear_query_result()
+
     try:
         generator = create_sql_generator()
 
@@ -340,7 +409,7 @@ def _run_query(
         )
 
         _clear_pending_clarification()
-        _show_query_result(details)
+        _remember_query(question, details)
 
     except SQLClarificationRequired as exc:
         st.session_state[PENDING_QUESTION_KEY] = question
@@ -424,12 +493,18 @@ def render() -> None:
     database_path = _select_database()
 
     if database_path is None:
+        _clear_query_result()
+        st.session_state.pop(QUERY_SOURCE_KEY, None)
         return
 
     schema = _select_schema(database_path)
 
     if schema is None or not schema.tables:
+        _clear_query_result()
+        st.session_state.pop(QUERY_SOURCE_KEY, None)
         return
+
+    _sync_query_source(database_path, schema)
 
     table_count = len(schema.tables)
     column_count = sum(len(table.columns) for table in schema.tables)
@@ -471,3 +546,5 @@ def render() -> None:
         schema=schema,
         database_path=database_path,
     )
+
+    _show_last_query()
