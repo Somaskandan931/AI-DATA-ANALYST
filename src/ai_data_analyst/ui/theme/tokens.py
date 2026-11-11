@@ -139,4 +139,5 @@ CLASSES: Final[dict[str, str]] = {
     "inspector_row": "fn-inspector-row",
     "mono": "fn-mono",
     "fingerprint": "fn-fingerprint",
+    "chart_marker": "fn-chart-marker",
 }

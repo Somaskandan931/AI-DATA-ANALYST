@@ -38,9 +38,9 @@ from ..analysis import (
 from ..chat import SUPPORTED_QUESTIONS, ChatAnswer, ChatError
 from ..ingestion import IngestionError
 from ..models import ColumnProfile
-from ..reporting import ReportError, chart_svg
+from ..reporting import ReportError
 from ..security import InMemoryAuditSink
-from . import evidence, layout
+from . import charts, evidence, layout
 from . import workspace as ws_api
 from .theme import CLASSES, fresh_class
 from .workspace import Workspace, WorkspaceError
@@ -488,7 +488,7 @@ def _results(workspace: Workspace) -> None:
                 for table in result.tables:
                     layout.data_table(table.rows, table.headers, caption=table.caption)
                 for position in result.chart_indices:
-                    st.image(chart_svg(report.charts[position]))
+                    charts.chart_card(report.charts[position])
                 if st.button("Remove this analysis", key=f"remove_{result.step}"):
                     ws_api.remove_artifact(workspace, result.step)
                     st.rerun()

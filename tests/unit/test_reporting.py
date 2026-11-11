@@ -524,6 +524,16 @@ def test_html_is_self_contained_with_a_restrictive_content_security_policy():
     assert "<script" not in page and "<link" not in page and "@import" not in page
 
 
+def test_report_html_still_embeds_the_svg_charts() -> None:
+    # The app moved to Plotly, but the report is still an offline document whose charts
+    # are inline SVG; this guards reporting/ from following the UI adapter.
+    report, page, _ = _hostile_report()
+
+    assert report.charts
+    assert page.count("<svg") == len(report.charts)
+    assert '<figure id="figure-1">' in page
+
+
 def test_every_chart_svg_is_well_formed_xml_even_with_hostile_labels():
     report, _, _ = _hostile_report()
     assert len(report.charts) >= 6
