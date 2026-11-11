@@ -31,6 +31,9 @@ from ai_data_analyst.sql_agent.schema import (
     inspect_database,
 )
 
+from . import evidence, layout
+from .theme import fresh_class
+
 PROJECT_ROOT = Path(__file__).resolve().parents[3]
 SAMPLE_DB = PROJECT_ROOT / "data" / "sample" / "electricity_demand.db"
 SAMPLE_CSV = PROJECT_ROOT / "data" / "sample" / "electricity_demand.csv"
@@ -229,10 +232,10 @@ def _select_database() -> Path | None:
     if source == "Sample database":
         sample_path = _ensure_sample_database()
         if sample_path is None:
-            st.error("The sample database is unavailable.")
+            st.error("The sample database could not be found.")
             return None
 
-        st.markdown("**Selected database:** Electricity Demand Sample")
+        st.session_state["sql_database_name"] = "Electricity Demand Sample"
         return sample_path
 
     limits = LimitsConfig.from_env()
@@ -249,6 +252,7 @@ def _select_database() -> Path | None:
 
     try:
         database_path = _save_uploaded_database(uploaded_file)
+        st.session_state["sql_database_name"] = Path(uploaded_file.name).name
         st.success(f"Database uploaded: {Path(uploaded_file.name).name}")
         return database_path
 
@@ -262,7 +266,7 @@ def _select_schema(database_path: Path) -> SchemaSnapshot | None:
     try:
         available = inspect_database(database_path)
     except SchemaError:
-        st.error("Database metadata could not be inspected safely.")
+        st.error("The database's tables could not be read.")
         return None
 
     table_names = list(available)
@@ -272,16 +276,16 @@ def _select_schema(database_path: Path) -> SchemaSnapshot | None:
         options=table_names,
         default=table_names,
         key=f"sql_tables_{database_path.name}",
-        help="Only selected tables will be available to the SQL generator.",
+        help="Only the tables you select can be queried.",
     )
 
     if not selected_tables:
-        st.warning("Select at least one table.")
+        st.warning("Choose at least one table.")
         return None
 
     selected_columns: dict[str, tuple[str, ...]] = {}
 
-    with st.expander("Select permitted columns", expanded=True):
+    with st.expander("Choose columns", expanded=True):
         for table_name in selected_tables:
             available_columns = list(available[table_name])
 
@@ -293,7 +297,7 @@ def _select_schema(database_path: Path) -> SchemaSnapshot | None:
             )
 
             if not columns:
-                st.warning(f"Select at least one column for {table_name}.")
+                st.warning(f"Choose at least one column for {table_name}.")
                 return None
 
             selected_columns[table_name] = tuple(columns)
@@ -303,7 +307,7 @@ def _select_schema(database_path: Path) -> SchemaSnapshot | None:
         schema = discover_schema(database_path, allow_list)
 
     except SchemaError:
-        st.error("The selected database schema could not be approved safely.")
+        st.error("The selected tables could not be read safely.")
         return None
 
     except ValueError:
@@ -325,10 +329,7 @@ def _show_execution_error(error: SQLExecutionError) -> None:
     elif "row limit" in message or "result limit" in message:
         st.error("The query exceeded the configured result limit. Try narrowing your question.")
     elif "denied" in message or "not allowed" in message:
-        st.error(
-            "The query could not be executed because it did not meet "
-            "the database safety restrictions."
-        )
+        st.error("The query was blocked because it did not pass the database safety checks.")
     else:
         st.error("The database could not execute this query. Check your question and try again.")
 
@@ -337,16 +338,19 @@ def _configuration_failure_message(error: LLMConfigurationError) -> str:
     """Describe a provider configuration problem without echoing secret values."""
     if "LLM_PROVIDER" in str(error):
         return (
-            "The SQL provider is not supported. "
-            "Set LLM_PROVIDER to 'gemini' or 'ollama' in your .env file."
+            "SQL generation is not set up yet. Choose 'gemini' or 'ollama' in the app "
+            "settings (LLM_PROVIDER) and restart."
         )
 
     if "LLM_API_KEY" in str(error):
-        return "The SQL provider is missing its API key. Set LLM_API_KEY in your .env file."
+        return (
+            "SQL generation is not set up yet. Add your API key in the app settings "
+            "(LLM_API_KEY) and restart."
+        )
 
     return (
-        "The SQL provider configuration is invalid. "
-        "Check LLM_PROVIDER and LLM_API_KEY in your .env file."
+        "SQL generation is not set up yet. Check the provider settings "
+        "(LLM_PROVIDER and LLM_API_KEY) and restart."
     )
 
 
@@ -356,16 +360,33 @@ def _show_query_result(details: SQLPipelineResult, question: str | None = None) 
         st.text(f"Question: {question}")
     st.success("Query executed successfully.")
 
+    result = details.execution
+    limits = LimitsConfig.from_env()
+    fresh = fresh_class(
+        "sql-query-result",
+        (question, details.normalized_sql, len(result.rows)),
+    )
+    layout.evidence_view(
+        evidence.query_result_view(
+            question or "",
+            details.normalized_sql,
+            result,
+            max_rows=limits.max_result_rows,
+        ),
+        fresh=bool(fresh),
+    )
+
     st.markdown("**Validated SQL**")
     st.code(details.normalized_sql, language="sql")
-
-    result = details.execution
 
     st.markdown("**Query Results**")
 
     if result.rows:
         display = _display_frame(result)
-        st.dataframe(display, use_container_width=True)
+        layout.table(
+            [tuple(row) for row in display.itertuples(index=False, name=None)],
+            list(display.columns),
+        )
         if list(display.columns) != list(result.columns):
             st.caption("Duplicate column names are preserved; display labels are disambiguated.")
     else:
@@ -399,14 +420,15 @@ def _run_query(
     try:
         generator = create_sql_generator()
 
-        details = run_sql_pipeline_with_details(
-            question=question,
-            schema=schema,
-            db_path=database_path,
-            generator=generator,
-            limits=LimitsConfig.from_env(),
-            skip_ambiguity_check=skip_ambiguity_check,
-        )
+        with st.spinner("Generating and running SQL..."):
+            details = run_sql_pipeline_with_details(
+                question=question,
+                schema=schema,
+                db_path=database_path,
+                generator=generator,
+                limits=LimitsConfig.from_env(),
+                skip_ambiguity_check=skip_ambiguity_check,
+            )
 
         _clear_pending_clarification()
         _remember_query(question, details)
@@ -418,7 +440,7 @@ def _run_query(
 
     except SQLQueryDenied as exc:
         _clear_pending_clarification()
-        st.error("The generated SQL was rejected by the safety validator.")
+        st.error("The generated query was blocked because it did not pass the safety checks.")
 
         for violation in exc.validation.violations:
             st.write(f"- {violation.message}")
@@ -485,37 +507,26 @@ def _render_clarification(
         )
 
 
-def render() -> None:
-    """Render the SQL Analyst workspace."""
-    st.subheader("SQL Analyst")
-    st.caption("Ask questions about your database using natural language.")
+def _database_name() -> str:
+    """The human name of the chosen database, independent of any temporary path."""
+    return str(st.session_state.get("sql_database_name") or "SQLite database")
 
-    database_path = _select_database()
 
-    if database_path is None:
-        _clear_query_result()
-        st.session_state.pop(QUERY_SOURCE_KEY, None)
-        return
-
-    schema = _select_schema(database_path)
-
-    if schema is None or not schema.tables:
-        _clear_query_result()
-        st.session_state.pop(QUERY_SOURCE_KEY, None)
-        return
-
-    _sync_query_source(database_path, schema)
-
+def _query_panel(schema: SchemaSnapshot, database_path: Path) -> None:
+    """Schema summary, the question box and the clarification flow."""
     table_count = len(schema.tables)
     column_count = sum(len(table.columns) for table in schema.tables)
+    table_noun = "table" if table_count == 1 else "tables"
+    column_noun = "column" if column_count == 1 else "columns"
 
-    st.caption(f"{table_count} approved table(s) • {column_count} approved column(s)")
+    st.caption(f"{table_count:,} {table_noun} available · {column_count:,} {column_noun}")
 
-    with st.expander("Approved database schema"):
+    with st.expander("Tables available to the query"):
         for table in schema.tables:
             st.write(f"**Table:** `{table.name}`")
             st.write(
-                "**Allowed columns:** " + ", ".join(f"`{column.name}`" for column in table.columns)
+                "**Columns available:** "
+                + ", ".join(f"`{column.name}`" for column in table.columns)
             )
 
     question = st.text_area(
@@ -547,4 +558,52 @@ def render() -> None:
         database_path=database_path,
     )
 
-    _show_last_query()
+
+def render() -> None:
+    """Render the SQL Analyst workspace."""
+    rail, canvas = layout.shell()
+    with rail:
+        layout.section_label("Source")
+        database_path = _select_database()
+        layout.section_label("Database")
+        if database_path is None:
+            st.text("No database selected")
+        else:
+            st.text(_database_name())
+            st.text("SQLite · read-only")
+
+    # The schema is chosen in the canvas; the rail is filled in a second pass so the
+    # Inspector can name the tables that are actually available.
+    schema: SchemaSnapshot | None = None
+    with canvas:
+        layout.page_header(
+            "SQL Analyst",
+            "Ask the database",
+            "Questions become validated, read-only SQL with the result and its limits visible.",
+        )
+
+        if database_path is None:
+            _clear_query_result()
+            st.session_state.pop(QUERY_SOURCE_KEY, None)
+            st.text("Choose a database in the rail to continue.")
+        else:
+            schema = _select_schema(database_path)
+            if schema is None or not schema.tables:
+                _clear_query_result()
+                st.session_state.pop(QUERY_SOURCE_KEY, None)
+            else:
+                _sync_query_source(database_path, schema)
+                _query_panel(schema, database_path)
+                _show_last_query()
+
+    if database_path is not None:
+        with rail:
+            layout.inspector(
+                layout.sql_inspector_sections(
+                    tables=(
+                        tuple((table.name, len(table.columns)) for table in schema.tables)
+                        if schema is not None
+                        else ()
+                    ),
+                )
+            )

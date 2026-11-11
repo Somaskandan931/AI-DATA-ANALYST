@@ -61,6 +61,23 @@ def test_configuration_messages_are_distinct_and_hide_secrets() -> None:
         assert secret not in message
 
 
+def test_configuration_messages_are_friendly_and_actionable() -> None:
+    provider_message = sql_analyst._configuration_failure_message(
+        LLMConfigurationError("Unsupported LLM_PROVIDER value 'bogus'.")
+    )
+    key_message = sql_analyst._configuration_failure_message(
+        LLMConfigurationError("LLM_API_KEY is not configured.")
+    )
+
+    # The page used to say the provider was "not yet implemented"; it now tells the
+    # person which setting to change and that a restart is needed.
+    for message in (provider_message, key_message):
+        assert message.startswith("SQL generation is not set up yet.")
+        assert message.endswith("and restart.")
+        assert "not yet implemented" not in message.lower()
+        assert "unavailable" not in message.lower()
+
+
 def test_upload_over_configured_cap_is_rejected(monkeypatch) -> None:
     monkeypatch.setenv("AIDA_MAX_UPLOAD_BYTES", str(2 * 1024 * 1024))
     monkeypatch.setattr(sql_analyst.st, "session_state", {})
