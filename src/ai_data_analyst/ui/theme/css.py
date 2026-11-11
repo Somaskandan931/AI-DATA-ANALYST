@@ -81,6 +81,8 @@ _CSS_TEMPLATE = Template(
     --fn-canvas: $canvas;
     --fn-ink: $ink;
     --fn-ink-muted: $ink_muted;
+    /* Every table header, in every container, reads from this one token. */
+    --fn-table-head: var(--fn-ink-muted);
     --fn-rule: $rule;
     --fn-rule-weight: $rule_weight;
     --fn-rule-weight-strong: $rule_weight_strong;
@@ -620,8 +622,13 @@ pre,
     padding-inline-end: 0;
 }
 
-.fn-table thead th {
-    color: var(--fn-ink-muted);
+/* One header colour for every table, the chart card's "Chart data" table included.
+   Streamlit's own table text is slate; the scoped selectors repeat the token at a
+   higher specificity so a host rule cannot repaint a header grey-blue inside a card. */
+.fn-table thead th,
+[data-testid="stHtml"] .fn-table thead th,
+[data-testid="stMarkdownContainer"] .fn-table thead th {
+    color: var(--fn-table-head);
     font-family: var(--fn-font-mono);
     font-size: var(--fn-text-xs);
     font-weight: 500;

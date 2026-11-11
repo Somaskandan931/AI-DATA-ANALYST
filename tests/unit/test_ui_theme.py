@@ -277,6 +277,19 @@ def test_tables_scroll_keep_semantics_and_align_numbers() -> None:
     assert "border: 1px solid" not in cells
 
 
+def test_one_header_token_colours_every_table() -> None:
+    # The chart card's "Chart data" table and the tables elsewhere in a tab must not
+    # disagree; a host rule cannot repaint a header slate inside either container.
+    stylesheet = css.build_css()
+
+    assert "--fn-table-head: var(--fn-ink-muted);" in stylesheet
+    header = _block(stylesheet, ".fn-table thead th,")
+    assert "color: var(--fn-table-head);" in header
+    assert '[data-testid="stHtml"] .fn-table thead th' in header
+    assert '[data-testid="stMarkdownContainer"] .fn-table thead th' in header
+    assert "rgb(" not in header and "#31333F" not in header
+
+
 def test_section_head_keeps_the_group_chip_beside_the_label() -> None:
     block = _block(css.build_css(), ".fn-section-head {")
 
