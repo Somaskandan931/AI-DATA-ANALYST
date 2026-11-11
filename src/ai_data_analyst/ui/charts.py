@@ -95,14 +95,14 @@ def _short(label: str, limit: int = _TICK_LIMIT) -> str:
 
 
 def label_colors(labels: Sequence[str], *, highlight: str | None = None) -> dict[str, str]:
-    """Map every label to sage, except the one highlighted mark (persimmon).
+    """Map every label to sage, except the one highlighted mark (ink).
 
-    The mapping is keyed by label, not position, so the same category keeps its colour
-    when the rows are reordered. Categories are never coloured individually.
+    Ink reads as emphasis without borrowing the persimmon reserved for warnings and
+    the active tab. The mapping is keyed by label, not position, so the same category
+    keeps its colour when the rows are reordered. Categories are never coloured
+    individually.
     """
-    return {
-        label: PALETTE.persimmon if label == highlight else PALETTE.sage_text for label in labels
-    }
+    return {label: PALETTE.ink if label == highlight else PALETTE.sage_text for label in labels}
 
 
 def highlight_label(spec: ChartSpec) -> str | None:

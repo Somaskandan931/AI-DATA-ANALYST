@@ -102,14 +102,16 @@ def test_horizontal_bar_axis_titles_keep_the_label_meaning() -> None:
     assert layout.xaxis.title.text == "Rows"
 
 
-def test_only_one_mark_is_persimmon_and_colour_follows_the_label() -> None:
+def test_only_one_mark_is_ink_and_colour_follows_the_label() -> None:
     spec = _spec()
     trace = charts.figure_for(spec).data[0]
     colours = list(trace.marker.color)
 
-    assert colours.count(PALETTE.persimmon) == 1
-    assert colours[0] == PALETTE.persimmon  # North is the largest value
+    assert colours.count(PALETTE.ink) == 1
+    assert colours[0] == PALETTE.ink  # North is the largest value
     assert set(colours[1:]) == {PALETTE.sage_text}
+    # Persimmon stays reserved for warnings and the active tab, never a chart mark.
+    assert PALETTE.persimmon not in colours
 
     # Reordering rows does not change what colour a category has.
     reordered = _spec(labels=tuple(reversed(_LABELS)), values=tuple(reversed(_VALUES)))
@@ -123,7 +125,7 @@ def test_label_colours_are_keyed_by_label_not_position() -> None:
     first = charts.label_colors(("East", "West"), highlight="West")
     second = charts.label_colors(("West", "East"), highlight="West")
 
-    assert first == second == {"East": PALETTE.sage_text, "West": PALETTE.persimmon}
+    assert first == second == {"East": PALETTE.sage_text, "West": PALETTE.ink}
 
 
 def test_histogram_draws_one_bar_per_bin_between_its_edges() -> None:
