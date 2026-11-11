@@ -135,8 +135,9 @@ def test_histogram_draws_one_bar_per_bin_between_its_edges() -> None:
     assert trace.marker.color == PALETTE.sage_text
 
 
-def test_heatmap_is_diverging_persimmon_paper_sage_with_cell_text() -> None:
-    trace = charts.figure_for(_heatmap()).data[0]
+def test_heatmap_is_diverging_persimmon_paper_sage_with_cell_annotations() -> None:
+    figure = charts.figure_for(_heatmap())
+    trace = figure.data[0]
 
     assert trace.colorscale == (
         (0.0, PALETTE.persimmon),
@@ -147,8 +148,52 @@ def test_heatmap_is_diverging_persimmon_paper_sage_with_cell_text() -> None:
     assert list(trace.x) == ["demand_mwh", "temperature_c"]
     assert list(trace.y) == ["demand_mwh", "temperature_c"]
     assert [list(row) for row in trace.z] == [[-1.0, 0.25], [0.25, 1.0]]
-    assert [list(row) for row in trace.text] == [["-1.00", "0.25"], ["0.25", "1.00"]]
-    assert trace.texttemplate == "%{text}"
+    # Plotly paints every heatmap text run in one colour, so the values are annotations
+    # that can each carry their own readable colour.
+    assert trace.text is None
+    assert trace.texttemplate is None
+
+    cells = [
+        (annotation.y, annotation.x, annotation.text) for annotation in figure.layout.annotations
+    ]
+    assert cells == [
+        ("demand_mwh", "demand_mwh", "-1.00"),
+        ("demand_mwh", "temperature_c", "0.25"),
+        ("temperature_c", "demand_mwh", "0.25"),
+        ("temperature_c", "temperature_c", "1.00"),
+    ]
+
+
+def test_heatmap_annotation_text_clears_wcag_aa_on_every_fill() -> None:
+    matrix = ((-1.0, 0.25), (0.25, 1.0))
+    bound = 1.0
+
+    # The darkest fills are the ends of the ramp, so their text must switch pole:
+    # black on persimmon and white on the sage diagonal.
+    assert charts.heatmap_text_colour(-1.0, bound) == "#000000"
+    assert charts.heatmap_text_colour(1.0, bound) == "#FFFFFF"
+
+    for row in matrix:
+        for value in row:
+            fill = charts.heatmap_cell_colour(value, bound)
+            text = charts.heatmap_text_colour(value, bound)
+            assert charts.contrast_ratio(text, fill) >= 4.5
+
+
+def test_heatmap_diagonal_and_lightest_cell_contrast_ratios() -> None:
+    # The two ratios the UI review asked for: the 1.00 diagonal and the lightest
+    # off-diagonal cell (0.25, nearest paper on the sage side).
+    bound = 1.0
+    diagonal = charts.contrast_ratio(
+        charts.heatmap_text_colour(1.0, bound), charts.heatmap_cell_colour(1.0, bound)
+    )
+    lightest = charts.contrast_ratio(
+        charts.heatmap_text_colour(0.25, bound), charts.heatmap_cell_colour(0.25, bound)
+    )
+
+    assert diagonal == pytest.approx(5.48, abs=0.01)
+    assert lightest == pytest.approx(13.44, abs=0.01)
+    assert diagonal >= 4.5 and lightest >= 4.5
 
 
 def test_empty_spec_has_no_traces_and_a_quiet_message() -> None:
